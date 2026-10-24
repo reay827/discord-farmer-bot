@@ -100,7 +100,7 @@ class GameTests(unittest.TestCase):
         self.act('checkin')
         self.assertEqual(self.s['gold'], 130)
         self.assertEqual(self.s['revenue'], 0)
-        self.assertEqual(self.game.ranking(), [])
+        self.assertEqual(self.game.ranking()[0][2], 130)
         self.game.visit(1, '농부', 20)
         self.game = Game(self.path, clock=lambda: self.now)
         before = self.game.read(1)
@@ -452,12 +452,13 @@ class GameTests(unittest.TestCase):
             import json
             self.s['gold'] = 100000
             db.execute('UPDATE players SET state=? WHERE id=?', (json.dumps(self.s), '1'))
-        self.act('plant', crop='carrot', plot=0)
+        self.act('buy', crop='pumpkin', quantity=2)
+        self.act('plant', crop='pumpkin', plot=0)
         self.act('scarecrow')
-        self.act('plant', crop='carrot', plot=1)
+        self.act('plant', crop='pumpkin', plot=1)
         self.assertTrue(self.s['plots'][0]['bird'])
         self.assertFalse(self.s['plots'][1]['bird'])
-        self.now += 60
+        self.now += 300
         self.act('harvest')
         self.assertEqual(self.s['bag'][0]['weight'], self.s['bag'][1]['weight'])
         self.assertLess(self.s['bag'][0]['value'], self.s['bag'][1]['value'])

@@ -10,6 +10,9 @@ import discord
 from discord import app_commands
 from dotenv import load_dotenv
 
+from mining import MINING
+from features import install_features
+
 from game import CONFIG, CROPS, Game, GameError, grade, attendance_status, growth_seconds, KST
 
 ROOT = Path(__file__).resolve().parent
@@ -60,7 +63,7 @@ def farm_embed(s, notice='', public_name=None):
     title = f'🌿 {public_name}님의 농장' if public_name is not None else '🌿 나의 작은 농장'
     embed = discord.Embed(title=title, description=notice+'\n\n'+'\n'.join(grid), color=0x78AD70)
     embed.add_field(name='지갑', value=f"{s['gold']:,}골드")
-    embed.add_field(name='누적 판매', value=f"{s['revenue']:,}골드")
+    embed.add_field(name='농장 누적 판매', value=f"{s['revenue']:,}골드")
     embed.add_field(name='밭 / 허수아비', value=f"{s['rows']*5}/25칸 · {'설치됨' if s['scarecrow'] else '없음'}")
     reserved = [f"{('1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣')[i]} 다음 심기 성장 시간 20% 감소" for i, active in enumerate(s.get('fertilizer_rows', [])) if active]
     if public_name is None or reserved:
@@ -317,6 +320,12 @@ class FarmView(discord.ui.View):
     async def checkin(self, interaction, button):
         await self.action(interaction, 'checkin')
 
+    @discord.ui.button(label='탄광', emoji='⛏️', row=4)
+    async def go_mine(self, interaction, button):
+        async with self._edit_lock:
+            if await open_mining(interaction, edit=True):
+                self.stop()
+
 
 class FertilizerView(discord.ui.View):
     def __init__(self, user, state):
@@ -437,6 +446,14 @@ class ShopView(discord.ui.View):
                     await self.buy(interaction, 'buy_quality_fertilizer' if self.category == 'quality_fertilizer' else 'buy_fertilizer', quantity=quantity)
                 button.callback = buy_fertilizer
                 self.add_item(button)
+        elif category == 'pickaxes':
+            tier = (state.get('mine') or {}).get('pickaxe',0)
+            button = discord.ui.Button(label='최상위 곡괭이' if tier==3 else f"{MINING['pickaxe_names'][tier+1]} · {MINING['pickaxe_upgrade_costs'][MINING['pickaxes'][tier+1]]:,}G",emoji='⛏️',row=2,disabled=state['rows']<2 or tier==3)
+            async def upgrade_pickaxe(interaction):
+                if await open_mining(interaction,edit=True,action='mine_pickaxe',version=self.version):
+                    self.stop()
+            button.callback=upgrade_pickaxe
+            self.add_item(button)
         else:
             button = discord.ui.Button(label=f"{'설치 완료' if state['scarecrow'] else '허수아비 구매'} · {CONFIG['scarecrow_price']}G", emoji='🛡️', row=2, disabled=state['scarecrow'])
             async def scarecrow(interaction):
@@ -458,6 +475,9 @@ class ShopView(discord.ui.View):
             embed.add_field(name='✨ 품질 비료', value=f"가격 **{CONFIG['quality_fertilizer_price']}G / 개** · 보유 **{self.state.get('quality_fertilizer', 0)}개**\n한 밭 다음 심기 작물 판매가 **10% 증가**\n호박 한 밭부터 기본 무게 기준 이득이에요.\n농장의 비료 사용에서 종류를 선택해 예약하세요. 성장 비료와 중복 불가.", inline=False)
         elif self.category == 'fertilizer':
             embed.add_field(name='🌿 성장 비료', value=f"가격 **{CONFIG['fertilizer_price']}G / 개** · 보유 **{self.state.get('fertilizer', 0)}개**\n빈 밭 한 줄의 다음 심기 성장 시간 **20% 감소**\n농장의 🌿 비료 사용 버튼에서 예약해 주세요.\n심기에 성공할 때 1개 소모 · 중복 적용 불가", inline=False)
+        elif self.category == 'pickaxes':
+            tier=(self.state.get('mine') or {}).get('pickaxe',0)
+            embed.add_field(name='⛏️ 공용 곡괭이',value=f"현재: {MINING['pickaxe_names'][tier]}\n나무 무료 → 돌 3,000G → 철 15,000G → 다이아 80,000G\n순서대로 영구 업그레이드 · 이후 생산부터 새 광물 확률 적용\n{'🔒 2번 밭 개방 필요' if self.state['rows']<2 else '탄광에 가서 현재 광물을 받고 장비를 확인하세요.'}",inline=False)
         else:
             embed.add_field(name='🛡️ 허수아비', value=f"가격 **{CONFIG['scarecrow_price']}G** · 영구 적용\n구매 후 새로 심는 작물부터 새 피해를 막아요.\n상태: {'✅ 설치됨' if self.state['scarecrow'] else '미설치'}", inline=False)
         return embed
@@ -466,7 +486,8 @@ class ShopView(discord.ui.View):
         discord.SelectOption(label='씨앗', value='seeds', emoji='🌱', description='감자부터 목화까지 · 성장 시간순 12종'),
         discord.SelectOption(label='성장 비료', value='fertilizer', emoji='🌿', description='일회용 · 성장 시간 20% 단축'),
         discord.SelectOption(label='품질 비료', value='quality_fertilizer', emoji='✨', description='일회용 · 판매가 10% 증가'),
-        discord.SelectOption(label='농장 용품', value='supplies', emoji='🧰', description='농장을 지켜 주는 허수아비')])
+        discord.SelectOption(label='농장 용품', value='supplies', emoji='🧰', description='농장을 지켜 주는 허수아비'),
+        discord.SelectOption(label='곡괭이', value='pickaxes', emoji='⛏️', description='돌 · 철 · 다이아 곡괭이 영구 업그레이드')])
     async def category_menu(self, interaction, select):
         await self.navigate(interaction, select.values[0], self.crop)
 
@@ -530,6 +551,8 @@ def visit(interaction):
 async def farm(interaction: discord.Interaction):
     s, fresh = visit(interaction)
     intro = '🌱 첫 농장이에요! 내 농장 열기 버튼을 눌러 첫 씨앗을 심어보세요.' if fresh else ''
+    if s['rows']>=2 and not s.get('mine'):
+        intro += '\n⛏️ 이제 탄광을 갈 수 있습니다. /탄광 또는 개인 농장의 탄광 버튼을 눌러 주세요.'
     view = PublicFarmView(interaction.user.id, interaction.user.display_name)
     await interaction.response.send_message(embed=farm_embed(s, intro, public_name=interaction.user.display_name), view=view)
     message = await interaction.original_response()
@@ -586,21 +609,6 @@ async def checkin_command(interaction: discord.Interaction):
     await update_public_farms(interaction.user.id)
 
 
-@bot.tree.command(name='순위', description='서버·전체의 작물별 최고 무게 또는 누적 판매 순위')
-@app_commands.choices(scope=[app_commands.Choice(name='현재 서버',value='server'),app_commands.Choice(name='봇 전체',value='global')], crop=CROP_CHOICES)
-async def ranking(interaction: discord.Interaction, scope: str = 'server', crop: str = None):
-    visit(interaction)
-    if scope == 'server' and interaction.guild_id is None:
-        await interaction.response.send_message('서버에서 실행하거나 scope에서 봇 전체를 선택해 주세요.', ephemeral=True)
-        return
-    rows = game.ranking(interaction.guild_id if scope == 'server' else None, crop)
-    label = CROPS[crop]['name']+' 최고 무게' if crop else '누적 판매 수익'
-    lines = [f"{i}. {discord.utils.escape_markdown(name)} · {score:,}{'g' if crop else 'G'}" for i,(_,name,score) in enumerate(rows, 1)]
-    embed = discord.Embed(title=f"🏆 {'현재 서버' if scope == 'server' else '봇 전체'} · {label}", description='\n'.join(lines) or '아직 기록이 없어요.', color=0xEBCB78)
-    embed.set_footer(text='서버 순위는 이 서버에서 봇을 사용한 사람의 모든 서버 합산 기록입니다. 동점은 계정 ID 순서로 표시합니다.')
-    await interaction.response.send_message(embed=embed, ephemeral=True)
-
-
 @bot.tree.command(name='도움말', description='농장 게임의 규칙과 사용법')
 async def help_command(interaction: discord.Interaction):
     visit(interaction)
@@ -611,12 +619,13 @@ async def help_command(interaction: discord.Interaction):
         '/상점: 씨앗·비료·허수아비 구매 · /가방: 씨앗·비료·수확물·최고 기록\n'
         '🌿 성장 비료: 5G, 빈 밭 한 줄의 다음 심기에 1개 소모하고 성장 시간 20% 감소. 농장의 비료 사용 버튼에서 예약해요.\n'
         '✨ 품질 비료: 20G, 다음 심기 판매가 10% 증가. 성장 비료와 둘 중 하나만 예약할 수 있어요. 무게 기록은 그대로예요.\n'
-        '/판매: 작물별 또는 전체 판매 · /순위: 범위 선택, crop 생략 시 누적 판매 수익\n'
+        '/판매: 작물별 또는 전체 판매 · /순위: 공개 메뉴에서 보유 골드·작물·광물 무게 선택\n'
+        '/탄광: 2번 밭부터 자동 채굴. 첫 방문에 노동자·나무 곡괭이·가방 60칸 지급. 가득 차면 생산·천장 정지.\n'
         f"📅 /출석: 매일 {CONFIG['attendance_daily_gold']}골드, 연속 {CONFIG['attendance_bonus_days']}일마다 추가 {CONFIG['attendance_bonus_gold']}골드. 한국 시간 0시 기준, 모든 서버에서 하루 한 번이에요.\n"
         + crop_times() + '. 작물은 시들지 않아요.\n'
         '전체 심기는 빈 밭 수만큼 씨앗이 있어야 해요. 한 줄씩 최대 25칸까지 확장해요.\n'
         '농장은 모든 서버에서 공유해요. 기록은 판매해도 유지돼요.\n'
-        '새 피해 확률 5%, 판매가 10% 감소. 크기 기록은 그대로예요. 허수아비는 영구적이에요.\n'
+        '새 피해 확률 10%, 판매가 10% 감소. 감자·당근은 피해 제외. 허수아비 2,000G는 전체 밭 영구 보호예요.\n'
         '공개 농장은 구경용이에요. 내 농장 열기를 누르면 본인에게만 조작 화면이 떠요.\n'
         '개인 농장은 14분간, 상점은 3분간 사용할 수 있어요. 만료되면 내 농장 열기를 다시 눌러 주세요.\n'
         '봇 재시작 후에는 /농장을 다시 열어 주세요.', ephemeral=True)
@@ -632,6 +641,9 @@ async def on_command_error(interaction: discord.Interaction, error):
         await interaction.followup.send(message, ephemeral=True)
     else:
         await interaction.response.send_message(message, ephemeral=True)
+
+
+open_mining, MineView, RankView, mine_embed = install_features(bot, game, visit, open_private_farm, update_public_farms)
 
 
 if __name__ == '__main__':

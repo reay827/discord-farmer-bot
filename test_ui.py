@@ -47,11 +47,17 @@ class AutoGrowthTests(unittest.IsolatedAsyncioTestCase):
         message.edit.assert_not_awaited()
 
     async def test_each_distinct_ready_time_updates(self):
-        state = self.state(.01)
-        state['plots'][1] = dict(crop='tomato', ready=time.time()+.05, bird=False)
-        view = bot.FarmView(1, state)
+        state = self.state(10)
+        state['plots'][0]['ready'] = 1001
+        state['plots'][1] = dict(crop='tomato', ready=1002, bird=False)
+        now = [1000.0]
+        real_sleep = asyncio.sleep
+        async def advance(delay):
+            now[0] += delay
+            await real_sleep(0)
         message = AsyncMock()
-        with patch.object(bot.game, 'read', return_value=state):
+        with patch.object(bot.time,'time',side_effect=lambda:now[0]), patch.object(bot.asyncio,'sleep',side_effect=advance), patch.object(bot.game, 'read', return_value=state):
+            view = bot.FarmView(1, state)
             view.watch(message)
             await asyncio.wait_for(view._growth_task, timeout=1)
         self.assertEqual(message.edit.await_count, 2)

@@ -10,12 +10,12 @@
     12000,
     60000
   ],
-  "scarecrow_price": 300,
+  "scarecrow_price": 2000,
   "fertilizer_price": 5,
   "quality_fertilizer_price": 20,
   "quality_fertilizer_sale_multiplier": 1.1,
   "fertilizer_growth_multiplier": 0.8,
-  "bird_probability": 0.05,
+  "bird_probability": 0.1,
   "bird_value_multiplier": 0.9,
   "crops": {
     "potato": {
@@ -126,5 +126,9 @@
       "base_weight": 200,
       "required_rows": 5
     }
-  }
+  },
+  "bird_exempt_crops": [
+    "potato",
+    "carrot"
+  ]
 }

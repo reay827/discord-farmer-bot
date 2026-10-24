@@ -1,0 +1,155 @@
+{
+  "minerals": {
+    "stone": {
+      "name": "돌",
+      "base_sale": 2,
+      "base_weight_kg": 1.0,
+      "sale_mode": "fixed_per_item",
+      "record_weight_for_ranking": true,
+      "emoji": "🪨"
+    },
+    "coal": {
+      "name": "석탄",
+      "base_sale": 8,
+      "base_weight_kg": 0.5,
+      "sale_mode": "fixed_per_item",
+      "record_weight_for_ranking": true,
+      "emoji": "⚫"
+    },
+    "iron": {
+      "name": "철광석",
+      "base_sale": 20,
+      "base_weight_kg": 0.8,
+      "sale_mode": "fixed_per_item",
+      "record_weight_for_ranking": true,
+      "emoji": "🔩"
+    },
+    "emerald": {
+      "name": "에메랄드",
+      "base_sale": 150,
+      "base_weight_kg": 0.005,
+      "sale_mode": "proportional_to_weight",
+      "record_weight_for_ranking": true,
+      "emoji": "💚"
+    },
+    "ruby": {
+      "name": "루비",
+      "base_sale": 300,
+      "base_weight_kg": 0.01,
+      "sale_mode": "proportional_to_weight",
+      "record_weight_for_ranking": true,
+      "emoji": "❤️"
+    },
+    "aquamarine": {
+      "name": "아쿠아마린",
+      "base_sale": 3000,
+      "base_weight_kg": 0.01,
+      "sale_mode": "proportional_to_weight",
+      "record_weight_for_ranking": true,
+      "emoji": "🩵"
+    },
+    "diamond": {
+      "name": "다이아몬드",
+      "base_sale": 50000,
+      "base_weight_kg": 0.001,
+      "sale_mode": "proportional_to_weight",
+      "record_weight_for_ranking": true,
+      "emoji": "💎"
+    }
+  },
+  "mineral_order": [
+    "stone",
+    "coal",
+    "iron",
+    "emerald",
+    "ruby",
+    "aquamarine",
+    "diamond"
+  ],
+  "probabilities": {
+    "wood": [
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "stone": [
+      0.7,
+      0.3,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "iron": [
+      0.45,
+      0.3,
+      0.22,
+      0.02,
+      0.01,
+      0,
+      0
+    ],
+    "diamond": [
+      0.35,
+      0.3,
+      0.299,
+      0.03,
+      0.015,
+      0.004,
+      0.002
+    ]
+  },
+  "worker_interval_seconds": [
+    120,
+    90,
+    72,
+    60,
+    50
+  ],
+  "worker_hire_costs": [
+    0,
+    3000,
+    12000,
+    35000,
+    90000
+  ],
+  "bag_capacities": [
+    60,
+    120,
+    240,
+    480,
+    960
+  ],
+  "bag_upgrade_costs": [
+    0,
+    2000,
+    8000,
+    25000,
+    70000
+  ],
+  "pickaxe_upgrade_costs": {
+    "wood": 0,
+    "stone": 3000,
+    "iron": 15000,
+    "diamond": 80000
+  },
+  "unlock_farm_rows": 2,
+  "pity_seconds": 28800,
+  "pickaxes": [
+    "wood",
+    "stone",
+    "iron",
+    "diamond"
+  ],
+  "pickaxe_names": [
+    "나무 곡괭이",
+    "돌 곡괭이",
+    "철 곡괭이",
+    "다이아 곡괭이"
+  ]
+}

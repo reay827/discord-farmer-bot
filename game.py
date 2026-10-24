@@ -6,6 +6,7 @@ import time
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from mining import apply_mining, MiningError
 
 CONFIG = json.loads(Path(__file__).with_name('balance.json').read_text(encoding='utf-8'))
 CROPS = CONFIG['crops']
@@ -42,6 +43,7 @@ def prepare_state(state):
     state.setdefault('quality_fertilizer_rows', [False]*5)
     state.setdefault('attendance_last_date', None)
     state.setdefault('attendance_streak', 0)
+    state.setdefault('mine', None)
     for crop in CROPS:
         state['seeds'].setdefault(crop, 0)
     return state
@@ -147,7 +149,12 @@ class Game:
             db.execute('INSERT INTO operations VALUES(?,?)', (str(operation), self.clock()))
             return s, message
 
-    def _apply(self, s, action, crop=None, quantity=1, plot=None, row=None, fertilizer_kind='growth'):
+    def _apply(self, s, action, crop=None, quantity=1, plot=None, row=None, fertilizer_kind='growth', mineral=None):
+        if action.startswith('mine_'):
+            try:
+                return apply_mining(s, action, self.clock(), self.rng, mineral=mineral)
+            except MiningError as error:
+                raise GameError(str(error)) from error
         if crop is not None and crop not in CROPS:
             raise GameError('알 수 없는 작물이에요.')
         if action == 'checkin':
@@ -212,7 +219,10 @@ class Game:
             self.pay(s, price)
             s['rows'] += 1
             unlocked = ' · '.join(c['emoji']+' '+c['name'] for c in CROPS.values() if c.get('required_rows',1) == s['rows'])
-            return f"{s['rows']}번 밭 개방! · {price}골드\n🌱 새 작물 개방: {unlocked}"
+            notice = f"{s['rows']}번 밭 개방! · {price}골드\n🌱 새 작물 개방: {unlocked}"
+            if s['rows'] == 2:
+                notice += '\n⛏️ 이제 탄광을 갈 수 있습니다. /탄광으로 방문해 보세요!'
+            return notice
         if action == 'scarecrow':
             if s['scarecrow']:
                 raise GameError('이미 허수아비가 있어요.')
@@ -251,7 +261,7 @@ class Game:
                                      planted_at=now, growth_seconds=growth_seconds(crop, fertilized),
                                      fertilized=fertilized,
                                      sale_multiplier=CONFIG['quality_fertilizer_sale_multiplier'] if i//5 in quality_rows else 1,
-                                     bird=(not s['scarecrow'] and self.rng.random() < CONFIG['bird_probability']))
+                                     bird=(crop not in CONFIG.get('bird_exempt_crops',[]) and not s['scarecrow'] and self.rng.random() < CONFIG['bird_probability']))
             for r in fertilized_rows:
                 s['fertilizer_rows'][r] = False
             s['fertilizer'] -= len(fertilized_rows)
@@ -318,7 +328,7 @@ class Game:
             raise GameError(f"{price}골드가 필요해요. 현재 {s['gold']}골드예요.")
         s['gold'] -= price
 
-    def ranking(self, guild=None, crop=None):
+    def ranking(self, guild=None, crop=None, mineral=None):
         with self.connect() as db:
             rows = db.execute('SELECT p.id,p.name,p.state FROM players p' +
                 (' JOIN members m ON p.id=m.user WHERE m.guild=?' if guild is not None else ''),
@@ -326,7 +336,7 @@ class Game:
         result = []
         for uid, name, raw in rows:
             s = json.loads(raw)
-            score = s['records'].get(crop, 0) if crop else s['revenue']
-            if score > 0:
+            score = (s.get('mine') or {}).get('records',{}).get(mineral,0) if mineral else s['records'].get(crop, 0) if crop else s['gold']
+            if score > 0 or (not crop and not mineral):
                 result.append((uid, name, score))
         return sorted(result, key=lambda x: (-x[2], int(x[0])))[:10]

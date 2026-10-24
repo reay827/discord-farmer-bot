@@ -25,7 +25,8 @@ def farm_embed(s, notice=''):
             p = s['plots'][row*5+col]
             cells.append('🔒' if row >= s['rows'] else '🟫' if p is None else
                          CROPS[p['crop']]['emoji'] if p['ready'] <= time.time() else '🌱')
-        grid.append(('1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣')[row] + '　' + ' '.join(cells))
+        fertilizer_marker = '　🌿' if s.get('fertilizer_rows', [False]*5)[row] else ''
+        grid.append(('1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣')[row] + '　' + ' '.join(cells) + fertilizer_marker)
     embed = discord.Embed(title='🌿 나의 작은 농장', description=notice+'\n\n'+'\n'.join(grid), color=0x78AD70)
     embed.add_field(name='지갑', value=f"{s['gold']:,}골드")
     embed.add_field(name='누적 판매', value=f"{s['revenue']:,}골드")

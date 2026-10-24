@@ -87,8 +87,15 @@ class GameTests(unittest.TestCase):
             self.assertEqual(self.s['plots'][i]['ready'], self.now+CROPS[key]['seconds'])
         self.now += 1800
         self.act('harvest')
-        self.act('sell', crop='tomato')
+        receipt = self.act('sell', crop='tomato')
+        self.assertIn('🍅 토마토 1개', receipt)
+        self.assertNotIn('🥕 당근', receipt)
         self.assertEqual({x['crop'] for x in self.s['bag']}, {'carrot','pumpkin'})
+        total = sum(x['value'] for x in self.s['bag'])
+        receipt = self.act('sell')
+        self.assertIn('🥕 당근 1개', receipt)
+        self.assertIn('🎃 호박 1개', receipt)
+        self.assertIn(f'총 2개 · +{total:,}골드', receipt)
 
     def test_expansion_max_and_revenue_not_decreased(self):
         # 초기 자금으로 첫 확장, 반복 농사로 나머지 확장 비용 획득.

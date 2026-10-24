@@ -2,6 +2,7 @@ import asyncio
 import time
 import unittest
 from unittest.mock import AsyncMock, patch
+from types import SimpleNamespace
 
 import bot
 
@@ -46,3 +47,24 @@ class AutoGrowthTests(unittest.IsolatedAsyncioTestCase):
             await asyncio.wait_for(view._growth_task, timeout=1)
         self.assertEqual(message.edit.await_count, 2)
         view.stop()
+
+    async def test_shop_category_navigation_and_purchase(self):
+        state = self.state(1800)
+        view = bot.ShopView(1, state)
+        interaction = SimpleNamespace(response=SimpleNamespace(edit_message=AsyncMock()), id=123)
+        with patch.object(bot.game, 'read', return_value=state):
+            await view.navigate(interaction, 'supplies', 'carrot')
+        supplies = interaction.response.edit_message.call_args.kwargs['view']
+        self.assertEqual(len(supplies.children), 2)
+        self.assertIn('허수아비', supplies.embed().fields[1].name)
+        with patch.object(bot.game, 'read', return_value=state):
+            await supplies.navigate(interaction, 'seeds', 'tomato')
+        seeds = interaction.response.edit_message.call_args.kwargs['view']
+        self.assertEqual(len(seeds.children), 5)
+        self.assertIn('토마토', seeds.embed().fields[1].name)
+        with patch.object(bot.game, 'act', return_value=(state, '구매 완료')) as act:
+            await seeds.children[3].callback(interaction)
+            act.assert_called_once_with(1, 0, 123, 'buy', crop='tomato', quantity=5)
+        updated = interaction.response.edit_message.call_args.kwargs['view']
+        self.assertEqual(updated.crop, 'tomato')
+        updated.stop()

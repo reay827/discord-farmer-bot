@@ -160,7 +160,13 @@ class Game:
             s['bag'] = [x for x in s['bag'] if crop is not None and x['crop'] != crop]
             s['gold'] += value
             s['revenue'] += value
-            return f'{len(items)}개 판매 · +{value}골드'
+            lines = ['🧺 판매 완료']
+            for key, c in CROPS.items():
+                sold = [x for x in items if x['crop'] == key]
+                if sold:
+                    lines.append(f"{c['emoji']} {c['name']} {len(sold)}개 · +{sum(x['value'] for x in sold):,}골드")
+            lines.append(f'총 {len(items)}개 · +{value:,}골드')
+            return '\n'.join(lines)
         raise GameError('알 수 없는 작업이에요.')
 
     @staticmethod

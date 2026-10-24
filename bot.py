@@ -152,21 +152,56 @@ class FarmView(discord.ui.View):
 
 
 class ShopView(discord.ui.View):
-    def __init__(self, user, state):
+    def __init__(self, user, state, category='seeds', crop='carrot'):
         super().__init__(timeout=180)
         self.user, self.version = user, state['version']
-        for crop, c in CROPS.items():
+        self.state, self.category, self.crop = state, category, crop
+        for option in self.category_menu.options:
+            option.default = option.value == category
+        if category == 'seeds':
+            menu = discord.ui.Select(placeholder='🌱 구매할 씨앗 선택', row=1, options=[
+                discord.SelectOption(label=c['name'], value=k, emoji=c['emoji'], default=k==crop,
+                                     description=f"씨앗 {c['seed_price']}G · 성장 {c['seconds']}초") for k,c in CROPS.items()])
+            async def choose_crop(interaction):
+                await self.navigate(interaction, 'seeds', menu.values[0])
+            menu.callback = choose_crop
+            self.add_item(menu)
+            c = CROPS[crop]
             for quantity in (1, 5, 25):
-                button = discord.ui.Button(label=f"{c['name']} {quantity}개 · {c['seed_price']*quantity}G", row=list(CROPS).index(crop))
-                async def callback(interaction, crop=crop, quantity=quantity):
-                    await self.buy(interaction, 'buy', crop=crop, quantity=quantity)
+                button = discord.ui.Button(label=f"{quantity}개 구매 · {c['seed_price']*quantity}G", emoji=c['emoji'], row=2, style=discord.ButtonStyle.green)
+                async def callback(interaction, quantity=quantity):
+                    await self.buy(interaction, 'buy', crop=self.crop, quantity=quantity)
                 button.callback = callback
                 self.add_item(button)
-        button = discord.ui.Button(label=f"허수아비 · {CONFIG['scarecrow_price']}G", row=3, disabled=state['scarecrow'])
-        async def scarecrow(interaction):
-            await self.buy(interaction, 'scarecrow')
-        button.callback = scarecrow
-        self.add_item(button)
+        else:
+            button = discord.ui.Button(label=f"{'설치 완료' if state['scarecrow'] else '허수아비 구매'} · {CONFIG['scarecrow_price']}G", emoji='🛡️', row=2, disabled=state['scarecrow'])
+            async def scarecrow(interaction):
+                await self.buy(interaction, 'scarecrow')
+            button.callback = scarecrow
+            self.add_item(button)
+
+    def embed(self, notice=''):
+        embed = discord.Embed(title='🏪 농장 상점', description=notice or '카테고리와 상품을 선택해 주세요.', color=0x78AD70)
+        embed.add_field(name='💰 보유 골드', value=f"{self.state['gold']:,}G", inline=False)
+        if self.category == 'seeds':
+            c = CROPS[self.crop]
+            seconds = c['seconds']
+            duration = f'{seconds}초' if seconds < 60 else f'{seconds//60}분'
+            embed.add_field(name=f"{c['emoji']} {c['name']} 씨앗", value=f"가격 **{c['seed_price']}G / 개**\n성장 시간 **{duration}**\n보유 씨앗 **{self.state['seeds'][self.crop]}개**\n아래 버튼으로 수량을 선택해 구매하세요.", inline=False)
+        else:
+            embed.add_field(name='🛡️ 허수아비', value=f"가격 **{CONFIG['scarecrow_price']}G** · 영구 적용\n구매 후 새로 심는 작물부터 새 피해를 막아요.\n상태: {'✅ 설치됨' if self.state['scarecrow'] else '미설치'}", inline=False)
+        return embed
+
+    @discord.ui.select(placeholder='🗂️ 카테고리 선택', row=0, options=[
+        discord.SelectOption(label='씨앗', value='seeds', emoji='🌱', description='당근 · 토마토 · 호박'),
+        discord.SelectOption(label='농장 용품', value='supplies', emoji='🧰', description='농장을 지켜 주는 허수아비')])
+    async def category_menu(self, interaction, select):
+        await self.navigate(interaction, select.values[0], self.crop)
+
+    async def navigate(self, interaction, category, crop):
+        view = ShopView(self.user, game.read(self.user), category, crop)
+        await interaction.response.edit_message(content=None, embed=view.embed(), view=view)
+        self.stop()
 
     async def interaction_check(self, interaction):
         if interaction.user.id != self.user:
@@ -180,7 +215,8 @@ class ShopView(discord.ui.View):
         except GameError as error:
             await interaction.response.send_message(str(error), ephemeral=True)
             return
-        await interaction.response.edit_message(content=f"{msg}\n보유 골드: {s['gold']}G", view=ShopView(self.user, s))
+        view = ShopView(self.user, s, self.category, self.crop)
+        await interaction.response.edit_message(content=None, embed=view.embed(msg), view=view)
         self.stop()
 
 
@@ -219,7 +255,8 @@ async def farm(interaction: discord.Interaction):
 @bot.tree.command(name='상점', description='씨앗과 영구 허수아비를 구매해요')
 async def shop(interaction: discord.Interaction):
     s, _ = visit(interaction)
-    await interaction.response.send_message(content=f"🌻 씨앗 상점 · 보유 골드 {s['gold']}G\n허수아비는 구입 후 새로 심는 작물부터 보호해요.", view=ShopView(interaction.user.id, s), ephemeral=True)
+    view = ShopView(interaction.user.id, s)
+    await interaction.response.send_message(embed=view.embed(), view=view, ephemeral=True)
 
 
 @bot.tree.command(name='가방', description='씨앗, 수확물, 개인 최고 기록을 확인해요')

@@ -46,10 +46,10 @@ class GameTests(unittest.TestCase):
         self.act('reserve_fertilizer', row=0, fertilizer_kind='quality')
         self.assertEqual(self.s['quality_fertilizer'], 1)
         with self.assertRaises(GameError):
-            self.act('reserve_fertilizer', row=0)
+            self.act('reserve_fertilizer', row=0, fertilizer_kind='quality')
         self.act('plant', crop='pumpkin', row=0)
         self.assertEqual(self.s['quality_fertilizer'], 0)
-        self.assertFalse(self.s['quality_fertilizer_rows'][0])
+        self.assertTrue(self.s['quality_fertilizer_rows'][0])
         self.assertTrue(all(p['ready'] == self.now+300 and not p['fertilized'] for p in self.s['plots'][:5]))
         self.game = Game(self.path, clock=lambda: self.now, rng=BaseWeights())
         self.now += 300
@@ -64,8 +64,9 @@ class GameTests(unittest.TestCase):
         self.act('buy_quality_fertilizer')
         self.act('buy_fertilizer')
         self.act('reserve_fertilizer', row=0)
-        with self.assertRaises(GameError):
-            self.act('reserve_fertilizer', row=0, fertilizer_kind='quality')
+        self.act('reserve_fertilizer', row=0, fertilizer_kind='quality')
+        self.assertFalse(self.s['fertilizer_rows'][0])
+        self.assertTrue(self.s['quality_fertilizer_rows'][0])
         self.act('cancel_fertilizer', row=0)
         self.act('reserve_fertilizer', row=0, fertilizer_kind='quality')
         before = self.game.read(1)
@@ -287,7 +288,7 @@ class GameTests(unittest.TestCase):
         self.game = Game(self.path, clock=lambda: self.now)
         self.act('plant', crop='carrot', row=0)
         self.assertEqual(self.s['fertilizer'], 0)
-        self.assertFalse(self.s['fertilizer_rows'][0])
+        self.assertTrue(self.s['fertilizer_rows'][0])
         self.assertTrue(all(p['ready'] == self.now+48 for p in self.s['plots'][:5]))
         self.assertTrue(all(p['fertilized'] for p in self.s['plots'][:5]))
         self.now += 48
@@ -297,24 +298,51 @@ class GameTests(unittest.TestCase):
         self.act('plant', crop='carrot', row=0)
         self.assertEqual(self.s['plots'][0]['ready'], self.now+60)
 
-    def test_fertilizer_cancel_locked_occupied_and_no_overbooking(self):
+    def test_auto_fertilizer_switch_on_occupied_field_and_shared_shortage(self):
+        self.unlock_to(2)
         self.act('buy_fertilizer')
         with self.assertRaises(GameError):
-            self.act('reserve_fertilizer', row=1)
+            self.act('reserve_fertilizer', row=2)
         self.act('reserve_fertilizer', row=0)
+        self.act('reserve_fertilizer', row=1)
+        self.act('buy', crop='carrot', quantity=5)
+        notice = self.act('plant', crop='carrot')
+        self.assertTrue(all(p['fertilized'] for p in self.s['plots'][:5]))
+        self.assertTrue(all(not p['fertilized'] for p in self.s['plots'][5:10]))
+        self.assertIn('비료 부족', notice)
+        self.assertEqual(self.s['fertilizer'], 0)
+        self.assertEqual(sum(self.s['fertilizer_rows']), 2)
+        before = self.s['plots'][0].copy()
+        self.act('reserve_fertilizer', row=0, fertilizer_kind='quality')
+        self.assertEqual(self.s['plots'][0], before)
+        self.assertFalse(self.s['fertilizer_rows'][0])
+        self.assertTrue(self.s['quality_fertilizer_rows'][0])
         self.act('cancel_fertilizer', row=0)
-        self.assertEqual(self.s['fertilizer'], 1)
-        self.act('plant', crop='carrot', row=0)
-        with self.assertRaises(GameError):
-            self.act('reserve_fertilizer', row=0)
-        self.now += 60
+        self.assertFalse(self.s['quality_fertilizer_rows'][0])
+
+    def test_auto_fertilizer_repeats_and_resumes_after_restock(self):
+        self.fund()
+        self.act('buy_quality_fertilizer', quantity=2)
+        self.act('reserve_fertilizer', row=0, fertilizer_kind='quality')
+        for remaining in (1,0):
+            self.act('buy', crop='pumpkin', quantity=5)
+            self.act('plant', crop='pumpkin', row=0)
+            self.assertEqual(self.s['quality_fertilizer'], remaining)
+            self.assertTrue(self.s['quality_fertilizer_rows'][0])
+            self.assertEqual(self.s['plots'][0]['sale_multiplier'],1.1)
+            self.now+=300
+            self.act('harvest')
+        self.act('buy', crop='pumpkin', quantity=5)
+        message=self.act('plant', crop='pumpkin', row=0)
+        self.assertIn('비료 부족',message)
+        self.assertEqual(self.s['plots'][0]['sale_multiplier'],1)
+        self.now+=300
         self.act('harvest')
-        self.act('sell')
-        self.act('expand')
-        self.act('reserve_fertilizer', row=0)
-        with self.assertRaises(GameError):
-            self.act('reserve_fertilizer', row=1)
-        self.assertEqual(sum(self.game.read(1)['fertilizer_rows']), 1)
+        self.act('buy_quality_fertilizer')
+        self.act('buy', crop='pumpkin', quantity=5)
+        self.act('plant', crop='pumpkin', row=0)
+        self.assertEqual(self.s['plots'][0]['sale_multiplier'],1.1)
+        self.assertEqual(self.s['quality_fertilizer'],0)
 
     def test_whole_farm_fertilizes_only_reserved_row(self):
         self.act('expand')

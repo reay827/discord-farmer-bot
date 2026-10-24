@@ -65,10 +65,10 @@ def farm_embed(s, notice='', public_name=None):
     embed.add_field(name='지갑', value=f"{s['gold']:,}골드")
     embed.add_field(name='농장 누적 판매', value=f"{s['revenue']:,}골드")
     embed.add_field(name='밭 / 허수아비', value=f"{s['rows']*5}/25칸 · {'설치됨' if s['scarecrow'] else '없음'}")
-    reserved = [f"{('1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣')[i]} 다음 심기 성장 시간 20% 감소" for i, active in enumerate(s.get('fertilizer_rows', [])) if active]
+    reserved = [f"{('1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣')[i]} 성장 비료 사용 중 ({s.get('fertilizer', 0)}개 남음)" for i, active in enumerate(s.get('fertilizer_rows', [])) if active]
     if public_name is None or reserved:
-        embed.add_field(name=f"🌿 성장 비료 · 보유 {s.get('fertilizer', 0)}개", value='\n'.join(reserved) or '비료 사용 버튼에서 빈 밭에 예약할 수 있어요.', inline=False)
-    quality_reserved = [f'{i+1}번 밭 · 다음 심기 판매가 10% 증가' for i,active in enumerate(s.get('quality_fertilizer_rows', [])) if active]
+        embed.add_field(name=f"🌿 성장 비료 · 보유 {s.get('fertilizer', 0)}개", value='\n'.join(reserved) or '비료 사용 버튼에서 밭별 자동 사용을 설정하세요.', inline=False)
+    quality_reserved = [f"{i+1}번 밭 · 품질 비료 사용 중 ({s.get('quality_fertilizer', 0)}개 남음)" for i,active in enumerate(s.get('quality_fertilizer_rows', [])) if active]
     if public_name is None or quality_reserved:
         embed.add_field(name=f"✨ 품질 비료 · 보유 {s.get('quality_fertilizer', 0)}개", value='\n'.join(quality_reserved) or '호박 한 밭부터 기본 무게 기준 이득 · 성장 비료와 중복 불가', inline=False)
     if public_name is None:
@@ -338,27 +338,24 @@ class FertilizerView(discord.ui.View):
             reserved = state.get('fertilizer_rows', [False]*5)[i]
             quality = state.get('quality_fertilizer_rows', [False]*5)[i]
             occupied = any(p for p in state['plots'][i*5:i*5+5])
-            status = '잠김' if locked else '품질 비료 예약됨' if quality else '성장 비료 예약됨' if reserved else '작물 있음' if occupied else '빈 밭 · 예약 가능'
+            status = '잠김' if locked else '품질 비료 사용 중' if quality else '성장 비료 사용 중' if reserved else '작물 있음' if occupied else '자동 사용 설정 가능'
             self.row_menu.options.append(discord.SelectOption(label=f'{i+1}번 밭 · {status}', value=str(i), emoji='🔒' if locked else '✨' if quality else '🌿' if reserved else '🟫', default=i==0))
 
     def embed(self):
-        if self.kind == 'quality':
-            return discord.Embed(title='✨ 품질 비료 사용', description=
-                f"보유 **{self.state.get('quality_fertilizer', 0)}개** · 예약 **{sum(self.state.get('quality_fertilizer_rows', []))}개**\n\n"
-                f'선택한 밭: **{self.row+1}번 밭 (가로 한 줄 5칸)**\n'
-                '다음 심기의 작물 판매가 **10% 증가** · 심기 성공 시 1개 소모\n'
-                '빈 밭에만 예약 가능 · 성장 비료와 중복 불가\n'
-                '무게·무게 순위·성장 시간은 그대로예요.\n'
-                '호박 한 밭은 기본 무게에서 판매가 +30G, 비료값 20G를 빼면 +10G예요.\n'
-                '예약 취소·심기 실패 시 비료는 소모되지 않아요.', color=0xEBCB78)
-        reserved = sum(self.state.get('fertilizer_rows', []))
-        return discord.Embed(title='🌿 성장 비료 사용', description=
-            f"보유 **{self.state.get('fertilizer', 0)}개** · 예약 **{reserved}개**\n\n"
-            f'선택한 밭: **{self.row+1}번 밭 (가로 한 줄 5칸)**\n'
-            '효과: 다음 심기 성장 시간 **20% 감소**\n'
-            + crop_times(fertilizer=True) + '\n\n'
-            '빈 밭에만 예약할 수 있어요. 심기에 성공하면 1개 소모돼요.\n'
-            '예약을 취소하거나 심기에 실패하면 소모되지 않아요. 무게 확률은 그대로예요.', color=0x78AD70)
+        quality = self.kind == 'quality'
+        inventory = 'quality_fertilizer' if quality else 'fertilizer'
+        label = '✨ 품질' if quality else '🌿 성장'
+        effect = '판매가 **10% 증가**' if quality else '성장 시간 **20% 감소**'
+        active = self.state.get(inventory+'_rows', [False]*5)[self.row]
+        return discord.Embed(title=label+' 비료 자동 사용', description=
+            f"선택한 밭: **{self.row+1}번 밭 (가로 한 줄 5칸)**\n"
+            f"{label} 비료 {'사용 중' if active else '설정 안 됨'} (**{self.state.get(inventory,0)}개 남음**)\n"
+            f"효과: 다음 심기부터 {effect}\n\n"
+            '심기에 성공할 때마다 1개 소모하고 자동 사용 설정은 유지돼요.\n'
+            '재고가 없으면 비료 없이 심고, 재구매하면 자동으로 사용해요.\n'
+            '재고는 모든 밭이 공유하며 전체 심기에서는 위쪽 밭부터 사용해요.\n'
+            '작물이 있어도 설정을 바꿀 수 있지만 이미 심은 작물은 바뀌지 않아요.\n'
+            '한 밭에 한 종류만 사용 · 심기 실패 시 소모 없음 · 언제든 사용 끄기 가능', color=0xEBCB78 if quality else 0x78AD70)
 
     async def interaction_check(self, interaction):
         if interaction.user.id != self.user:
@@ -402,11 +399,11 @@ class FertilizerView(discord.ui.View):
         await self.return_farm(interaction, state, notice)
         await update_public_farms(self.user)
 
-    @discord.ui.button(label='다음 심기에 사용', emoji='🌿', style=discord.ButtonStyle.green, row=2)
+    @discord.ui.button(label='자동 사용 설정', emoji='🌿', style=discord.ButtonStyle.green, row=2)
     async def reserve(self, interaction, button):
         await self.apply(interaction, 'reserve_fertilizer')
 
-    @discord.ui.button(label='예약 취소', row=2)
+    @discord.ui.button(label='사용 안 함', row=2)
     async def cancel(self, interaction, button):
         await self.apply(interaction, 'cancel_fertilizer')
 
@@ -472,9 +469,9 @@ class ShopView(discord.ui.View):
             if self.state['rows'] < c.get('required_rows',1):
                 embed.add_field(name='🔒 아직 잠긴 작물', value=f"**{c['required_rows']}번 밭을 개방하면** 구매하고 심을 수 있어요. 농장에서 다음 밭 확장을 구매해 주세요.", inline=False)
         elif self.category == 'quality_fertilizer':
-            embed.add_field(name='✨ 품질 비료', value=f"가격 **{CONFIG['quality_fertilizer_price']}G / 개** · 보유 **{self.state.get('quality_fertilizer', 0)}개**\n한 밭 다음 심기 작물 판매가 **10% 증가**\n호박 한 밭부터 기본 무게 기준 이득이에요.\n농장의 비료 사용에서 종류를 선택해 예약하세요. 성장 비료와 중복 불가.", inline=False)
+            embed.add_field(name='✨ 품질 비료', value=f"가격 **{CONFIG['quality_fertilizer_price']}G / 개** · 보유 **{self.state.get('quality_fertilizer', 0)}개**\n한 밭 다음 심기 작물 판매가 **10% 증가**\n호박 한 밭부터 기본 무게 기준 이득이에요.\n농장의 비료 사용에서 종류를 선택해 자동 사용을 설정하세요. 성장 비료와 중복 불가.", inline=False)
         elif self.category == 'fertilizer':
-            embed.add_field(name='🌿 성장 비료', value=f"가격 **{CONFIG['fertilizer_price']}G / 개** · 보유 **{self.state.get('fertilizer', 0)}개**\n빈 밭 한 줄의 다음 심기 성장 시간 **20% 감소**\n농장의 🌿 비료 사용 버튼에서 예약해 주세요.\n심기에 성공할 때 1개 소모 · 중복 적용 불가", inline=False)
+            embed.add_field(name='🌿 성장 비료', value=f"가격 **{CONFIG['fertilizer_price']}G / 개** · 보유 **{self.state.get('fertilizer', 0)}개**\n빈 밭 한 줄의 다음 심기 성장 시간 **20% 감소**\n농장의 🌿 비료 사용 버튼에서 자동 사용을 설정해 주세요.\n심기에 성공할 때 1개 소모 · 중복 적용 불가", inline=False)
         elif self.category == 'pickaxes':
             tier=(self.state.get('mine') or {}).get('pickaxe',0)
             embed.add_field(name='⛏️ 공용 곡괭이',value=f"현재: {MINING['pickaxe_names'][tier]}\n나무 무료 → 돌 3,000G → 철 15,000G → 다이아 80,000G\n순서대로 영구 업그레이드 · 이후 생산부터 새 광물 확률 적용\n{'🔒 2번 밭 개방 필요' if self.state['rows']<2 else '탄광에 가서 현재 광물을 받고 장비를 확인하세요.'}",inline=False)
@@ -576,8 +573,8 @@ async def shop(interaction: discord.Interaction):
 async def bag(interaction: discord.Interaction):
     s, _ = visit(interaction)
     embed = discord.Embed(title='🎒 나의 가방', color=0x78AD70)
-    embed.add_field(name='🌿 성장 비료', value=f"보유 {s['fertilizer']}개 · 예약 {sum(s['fertilizer_rows'])}개\n농장의 비료 사용 버튼에서 예약·취소할 수 있어요.", inline=False)
-    embed.add_field(name='✨ 품질 비료', value=f"보유 {s['quality_fertilizer']}개 · 예약 {sum(s['quality_fertilizer_rows'])}개\n다음 심기 판매가 10% 증가 · 성장 비료와 중복 불가", inline=False)
+    embed.add_field(name='🌿 성장 비료', value=f"보유 {s['fertilizer']}개 · 자동 사용 {sum(s['fertilizer_rows'])}개 밭\n농장의 비료 사용 버튼에서 자동 사용을 설정·해제할 수 있어요.", inline=False)
+    embed.add_field(name='✨ 품질 비료', value=f"보유 {s['quality_fertilizer']}개 · 자동 사용 {sum(s['quality_fertilizer_rows'])}개 밭\n다음 심기 판매가 10% 증가 · 성장 비료와 중복 불가", inline=False)
     for key, c in CROPS.items():
         items = [x for x in s['bag'] if x['crop'] == key]
         best = s['records'].get(key, 0)
@@ -617,8 +614,8 @@ async def help_command(interaction: discord.Interaction):
         '작물 개방: 1번 감자·당근·호박 / 2번 오이·가지·딸기 / 3번 토마토·포도 / 4번 배·귤 / 5번 쌀·목화\n'
         '밭을 선택하면 해당 줄의 빈 칸에만 심어요. 열린 밭 전체도 선택할 수 있어요.\n'
         '/상점: 씨앗·비료·허수아비 구매 · /가방: 씨앗·비료·수확물·최고 기록\n'
-        '🌿 성장 비료: 5G, 빈 밭 한 줄의 다음 심기에 1개 소모하고 성장 시간 20% 감소. 농장의 비료 사용 버튼에서 예약해요.\n'
-        '✨ 품질 비료: 20G, 다음 심기 판매가 10% 증가. 성장 비료와 둘 중 하나만 예약할 수 있어요. 무게 기록은 그대로예요.\n'
+        '🌿 성장 비료: 5G, 선택한 밭의 매번 심기에 1개 소모하고 성장 시간 20% 감소. 농장의 비료 사용 버튼에서 자동 사용을 설정해요.\n'
+        '✨ 품질 비료: 20G, 다음 심기 판매가 10% 증가. 성장 비료와 둘 중 하나만 자동 사용하도록 설정할 수 있어요. 무게 기록은 그대로예요.\n'
         '/판매: 작물별 또는 전체 판매 · /순위: 공개 메뉴에서 보유 골드·작물·광물 무게 선택\n'
         '/탄광: 2번 밭부터 자동 채굴. 첫 방문에 노동자·나무 곡괭이·가방 60칸 지급. 가득 차면 생산·천장 정지.\n'
         f"📅 /출석: 매일 {CONFIG['attendance_daily_gold']}골드, 연속 {CONFIG['attendance_bonus_days']}일마다 추가 {CONFIG['attendance_bonus_gold']}골드. 한국 시간 0시 기준, 모든 서버에서 하루 한 번이에요.\n"

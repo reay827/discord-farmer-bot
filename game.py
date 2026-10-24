@@ -188,21 +188,18 @@ class Game:
                     raise GameError('이 밭에는 예약한 비료가 없어요.')
                 s['fertilizer_rows'][row] = False
                 s['quality_fertilizer_rows'][row] = False
-                return f'🌿 {row+1}번 밭 비료 예약을 취소했어요. 비료는 소모되지 않았어요.'
-            if s['fertilizer_rows'][row] or s['quality_fertilizer_rows'][row]:
-                raise GameError('이미 비료가 예약된 밭이에요. 중복 적용할 수 없어요.')
-            if any(p is not None for p in s['plots'][row*5:row*5+5]):
-                raise GameError('작물이 없는 빈 밭 한 줄에만 비료를 예약할 수 있어요.')
+                return f'🌿 {row+1}번 밭 비료 자동 사용을 껐어요. 이미 심은 작물의 효과는 유지돼요.'
             if fertilizer_kind not in ('growth', 'quality'):
                 raise GameError('비료 종류를 선택해 주세요.')
             inventory = 'quality_fertilizer' if fertilizer_kind == 'quality' else 'fertilizer'
             reservations = inventory+'_rows'
-            if s[inventory] <= sum(s[reservations]):
-                raise GameError('사용 가능한 비료가 없어요. 상점에서 구매해 주세요.')
+            if s[reservations][row]:
+                raise GameError('이미 이 비료를 자동 사용 중이에요.')
+            s['fertilizer_rows'][row] = False
+            s['quality_fertilizer_rows'][row] = False
             s[reservations][row] = True
-            if fertilizer_kind == 'quality':
-                return f'✨ {row+1}번 밭 · 다음 심기 작물 판매가 10% 증가! 심기에 성공하면 품질 비료 1개가 소모돼요.'
-            return f'🌿 {row+1}번 밭 · 다음 심기 성장 시간 20% 감소! 심기에 성공하면 비료 1개가 소모돼요.'
+            label = '✨ 품질' if fertilizer_kind == 'quality' else '🌿 성장'
+            return f'{label} 비료 사용 중 ({s[inventory]}개 남음) · {row+1}번 밭\n매번 심기에 성공하면 1개 소모해요. 재고가 없으면 비료 없이 심고, 재구매하면 자동 재개해요.'
         if action == 'buy':
             if crop is None or type(quantity) is not int or not 1 <= quantity <= 999:
                 raise GameError('씨앗은 1~999개까지 구매할 수 있어요.')
@@ -248,12 +245,21 @@ class Game:
                 raise GameError(f"씨앗 {len(targets)}개가 필요해요. 현재 {s['seeds'][crop]}개예요.")
             s['seeds'][crop] -= len(targets)
             now = self.clock()
-            fertilized_rows = {i//5 for i in targets if s['fertilizer_rows'][i//5]}
-            quality_rows = {i//5 for i in targets if s['quality_fertilizer_rows'][i//5]}
-            if s['fertilizer'] < len(fertilized_rows):
-                raise GameError('예약된 비료가 부족해요. 비료 예약을 다시 확인해 주세요.')
-            if s['quality_fertilizer'] < len(quality_rows) or quality_rows & fertilized_rows:
-                raise GameError('비료 예약 상태를 확인해 주세요. 한 밭에 한 종류만 사용할 수 있어요.')
+            fertilized_rows, quality_rows, skipped = set(), set(), []
+            growth_left, quality_left = s['fertilizer'], s['quality_fertilizer']
+            for r in sorted({i//5 for i in targets}):
+                if s['quality_fertilizer_rows'][r]:
+                    if quality_left:
+                        quality_rows.add(r)
+                        quality_left -= 1
+                    else:
+                        skipped.append(r+1)
+                elif s['fertilizer_rows'][r]:
+                    if growth_left:
+                        fertilized_rows.add(r)
+                        growth_left -= 1
+                    else:
+                        skipped.append(r+1)
             for i in targets:
                 fertilized = i//5 in fertilized_rows
                 ready = now + growth_seconds(crop, fertilized)
@@ -262,17 +268,15 @@ class Game:
                                      fertilized=fertilized,
                                      sale_multiplier=CONFIG['quality_fertilizer_sale_multiplier'] if i//5 in quality_rows else 1,
                                      bird=(crop not in CONFIG.get('bird_exempt_crops',[]) and not s['scarecrow'] and self.rng.random() < CONFIG['bird_probability']))
-            for r in fertilized_rows:
-                s['fertilizer_rows'][r] = False
             s['fertilizer'] -= len(fertilized_rows)
-            for r in quality_rows:
-                s['quality_fertilizer_rows'][r] = False
             s['quality_fertilizer'] -= len(quality_rows)
             message = f"{CROPS[crop]['name']} {len(targets)}칸에 심었어요."
             if fertilized_rows:
                 message += f'\n🌿 비료 {len(fertilized_rows)}개 사용 · 해당 밭 성장 시간 20% 감소'
             if quality_rows:
                 message += f'\n✨ 품질 비료 {len(quality_rows)}개 사용 · 해당 밭 작물 판매가 10% 증가'
+            if skipped:
+                message += '\n비료 부족: '+', '.join(f'{r}번 밭' for r in skipped)+'은 비료 없이 심었어요. 자동 사용 설정은 유지돼요.'
             return message
         if action == 'harvest':
             count = 0

@@ -197,6 +197,15 @@ class AutoGrowthTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn('10%',fertilizer.embed().description)
         fertilizer.stop()
 
+    async def test_farm_displays_auto_quality_remaining_stock(self):
+        state=self.state(1800)
+        state['quality_fertilizer']=2
+        state['quality_fertilizer_rows']=[True,False,False,False,False]
+        embed=bot.farm_embed(state)
+        value=next(f.value for f in embed.fields if f.name.startswith('✨ 품질 비료'))
+        self.assertIn('1번 밭 · 품질 비료 사용 중 (2개 남음)',value)
+        self.assertIn('✨',embed.description)
+
     async def test_public_button_opens_clickers_own_private_farm(self):
         state = self.state(1800)
         panel = bot.PublicFarmView(owner=1, name='구경할 농부')

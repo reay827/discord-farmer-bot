@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import math
 import os
 import time
 from datetime import datetime
@@ -29,6 +30,19 @@ def duration_text(seconds):
 def crop_times(fertilizer=False):
     return ' · '.join(f"{c['name']} {duration_text(c['seconds'])}" +
         (f" → {duration_text(c['seconds']*CONFIG['fertilizer_growth_multiplier'])}" if fertilizer else '') for c in CROPS.values())
+
+
+def countdown_text(seconds):
+    hours, rest = divmod(max(0, math.ceil(seconds)), 3600)
+    minutes, seconds = divmod(rest, 60)
+    return f'{hours:02d}시간 {minutes:02d}분 {seconds:02d}초 남음'
+
+
+def growth_update_delay(remaining, public=False):
+    interval = (5 if public else 1) if remaining <= 60 else 15 if remaining <= 3600 else 60
+    # 구간이 바뀌거나 성장이 끝나는 시각에는 기다리지 않고 바로 다시 계산합니다.
+    boundary = remaining-3600 if remaining > 3600 else remaining-60 if remaining > 60 else remaining
+    return min(interval, remaining, boundary) + .01
 
 
 def farm_embed(s, notice='', public_name=None):
@@ -65,13 +79,12 @@ def farm_embed(s, notice='', public_name=None):
         for p in s['plots'][row*5:row*5+5]:
             if p and p['ready'] > now:
                 # 한 번의 심기에서 생긴 미세한 시각 차이는 같은 완료 시각으로 표시합니다.
-                key = (p['crop'], int(p['ready']))
+                key = (p['crop'], p['ready'])
                 groups[key] = p.get('growth_seconds', growth_seconds(p['crop'], p.get('fertilized', False)))
         for (crop, ready), seconds in groups.items():
-            finish = datetime.fromtimestamp(ready, KST).strftime('%m/%d %H:%M:%S')
-            growing.append(f"{('1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣')[row]} {CROPS[crop]['name']} · 성장 {duration_text(seconds)} · {finish} 완료")
+            growing.append(f"{('1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣')[row]} {CROPS[crop]['name']} · {countdown_text(ready-now)}")
     if growing:
-        embed.add_field(name='성장 완료 예정 · 한국 시간', value='\n'.join(growing), inline=False)
+        embed.add_field(name='성장 완료까지', value='\n'.join(growing), inline=False)
     embed.set_footer(text='🟫 빈 밭 · 🌱 성장 중 · 작물 그림은 수확 가능 | ' +
                      ('성장 완료 시 자동 갱신 · 버튼으로 각자의 농장을 열어 보세요.' if public_name is not None else
                       '개인 화면은 마지막 조작 후 14분간 유효 · 만료되면 내 농장 열기를 다시 누르세요.'))
@@ -131,7 +144,7 @@ class PublicFarmView(discord.ui.View):
                 deadlines = [p['ready'] for p in state['plots'] if p and p['ready'] > time.time()]
                 if not deadlines:
                     return
-                await asyncio.sleep(max(0, min(deadlines)-time.time())+.1)
+                await asyncio.sleep(growth_update_delay(max(0, min(deadlines)-time.time()), public=True))
                 async with self.lock:
                     state = game.read(self.owner)
                     await self.message.edit(embed=farm_embed(state, public_name=self.name))
@@ -180,8 +193,12 @@ class FarmView(discord.ui.View):
 
     async def _update_growth(self, message):
         try:
-            for deadline in self._deadlines:
-                await asyncio.sleep(max(0, deadline - time.time()) + 0.1)
+            while True:
+                state = game.read(self.user)
+                deadlines = [p['ready'] for p in state['plots'] if p and p['ready'] > time.time()]
+                if not deadlines:
+                    return
+                await asyncio.sleep(growth_update_delay(max(0,min(deadlines)-time.time())))
                 if self.is_finished():
                     return
                 async with self._edit_lock:

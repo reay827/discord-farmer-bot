@@ -406,7 +406,7 @@ class ShopView(discord.ui.View):
         return embed
 
     @discord.ui.select(placeholder='🗂️ 카테고리 선택', row=0, options=[
-        discord.SelectOption(label='씨앗', value='seeds', emoji='🌱', description='딸기 · 당근 · 토마토 · 호박'),
+        discord.SelectOption(label='씨앗', value='seeds', emoji='🌱', description='당근 · 딸기 · 토마토 · 호박 · 오이'),
         discord.SelectOption(label='비료', value='fertilizer', emoji='🌿', description='일회용 성장 비료 · 다음 심기 20% 단축'),
         discord.SelectOption(label='농장 용품', value='supplies', emoji='🧰', description='농장을 지켜 주는 허수아비')])
     async def category_menu(self, interaction, select):

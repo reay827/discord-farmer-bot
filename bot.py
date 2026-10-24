@@ -151,7 +151,9 @@ class FarmView(discord.ui.View):
         self.user, self.version = user, state['version']
         self.crop, self.row = 'carrot', 0
         self.open_rows = state['rows']
-        self.crop_menu.options = [discord.SelectOption(label=f"{c['name']} · 씨앗 {state['seeds'][k]}개", value=k, emoji=c['emoji'], default=k=='carrot') for k,c in CROPS.items()]
+        self.crop_menu.options = [discord.SelectOption(label=f"{c['name']} · 씨앗 {state['seeds'][k]}개", value=k,
+            emoji='🔒' if state['rows'] < c.get('required_rows',1) else c['emoji'],
+            description=f"{c.get('required_rows',1)}번 밭 개방 필요" if state['rows'] < c.get('required_rows',1) else f"성장 {duration_text(c['seconds'])}", default=k=='carrot') for k,c in CROPS.items()]
         self.plot_menu.options = [discord.SelectOption(label='열린 밭 전체', value='all', emoji='🌾', description='열린 모든 줄의 빈 칸에 심기')]
         for i in range(5):
             opened = i < state['rows']
@@ -224,6 +226,10 @@ class FarmView(discord.ui.View):
 
     @discord.ui.select(placeholder='심을 작물 선택', row=0)
     async def crop_menu(self, interaction, select):
+        c = CROPS[select.values[0]]
+        if self.open_rows < c.get('required_rows',1):
+            await interaction.response.send_message(f"🔒 {c['name']}은 {c['required_rows']}번 밭 개방 후 사용할 수 있어요.", ephemeral=True)
+            return
         self.crop = select.values[0]
         for option in select.options:
             option.default = option.value == self.crop
@@ -366,15 +372,15 @@ class ShopView(discord.ui.View):
             option.default = option.value == category
         if category == 'seeds':
             menu = discord.ui.Select(placeholder='🌱 구매할 씨앗 선택', row=1, options=[
-                discord.SelectOption(label=c['name'], value=k, emoji=c['emoji'], default=k==crop,
-                                     description=f"씨앗 {c['seed_price']}G · 성장 {c['seconds']}초") for k,c in CROPS.items()])
+                discord.SelectOption(label=c['name'], value=k, emoji='🔒' if state['rows'] < c.get('required_rows',1) else c['emoji'], default=k==crop,
+                                     description=f"{c.get('required_rows',1)}번 밭 개방 필요" if state['rows'] < c.get('required_rows',1) else f"씨앗 {c['seed_price']}G · 성장 {duration_text(c['seconds'])}") for k,c in CROPS.items()])
             async def choose_crop(interaction):
                 await self.navigate(interaction, 'seeds', menu.values[0])
             menu.callback = choose_crop
             self.add_item(menu)
             c = CROPS[crop]
             for quantity in (5, 25):
-                button = discord.ui.Button(label=f"{quantity}개 구매 · {c['seed_price']*quantity}G", emoji=c['emoji'], row=2, style=discord.ButtonStyle.green)
+                button = discord.ui.Button(label=f"{quantity}개 구매 · {c['seed_price']*quantity}G", emoji=c['emoji'], row=2, style=discord.ButtonStyle.green, disabled=state['rows'] < c.get('required_rows',1))
                 async def callback(interaction, quantity=quantity):
                     await self.buy(interaction, 'buy', crop=self.crop, quantity=quantity)
                 button.callback = callback
@@ -401,6 +407,8 @@ class ShopView(discord.ui.View):
             seconds = c['seconds']
             duration = duration_text(seconds)
             embed.add_field(name=f"{c['emoji']} {c['name']} 씨앗", value=f"가격 **{c['seed_price']}G / 개**\n성장 시간 **{duration}**\n보유 씨앗 **{self.state['seeds'][self.crop]}개**\n아래 버튼으로 수량을 선택해 구매하세요.", inline=False)
+            if self.state['rows'] < c.get('required_rows',1):
+                embed.add_field(name='🔒 아직 잠긴 작물', value=f"**{c['required_rows']}번 밭을 개방하면** 구매하고 심을 수 있어요. 농장에서 다음 밭 확장을 구매해 주세요.", inline=False)
         elif self.category == 'fertilizer':
             embed.add_field(name='🌿 성장 비료', value=f"가격 **{CONFIG['fertilizer_price']}G / 개** · 보유 **{self.state.get('fertilizer', 0)}개**\n빈 밭 한 줄의 다음 심기 성장 시간 **20% 감소**\n농장의 🌿 비료 사용 버튼에서 예약해 주세요.\n심기에 성공할 때 1개 소모 · 중복 적용 불가", inline=False)
         else:
@@ -549,6 +557,7 @@ async def help_command(interaction: discord.Interaction):
     visit(interaction)
     await interaction.response.send_message('🌱 /농장 → 작물과 빈 밭 선택 → 심기 → 성장 후 새로고침 → 모두 수확 → 판매\n'
         '1번 밭은 첫 가로줄 5칸이에요. 2~5번 밭은 줄 확장 구매 후 열려요.\n'
+        '작물 개방: 1번 감자·당근·호박 / 2번 오이·가지·딸기 / 3번 토마토·포도 / 4번 배·귤 / 5번 쌀·목화\n'
         '밭을 선택하면 해당 줄의 빈 칸에만 심어요. 열린 밭 전체도 선택할 수 있어요.\n'
         '/상점: 씨앗·비료·허수아비 구매 · /가방: 씨앗·비료·수확물·최고 기록\n'
         '🌿 성장 비료: 5G, 빈 밭 한 줄의 다음 심기에 1개 소모하고 성장 시간 20% 감소. 농장의 비료 사용 버튼에서 예약해요.\n'

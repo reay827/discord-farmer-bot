@@ -59,6 +59,7 @@ class AutoGrowthTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_shop_category_navigation_and_purchase(self):
         state = self.state(1800)
+        state['rows'] = 3
         view = bot.ShopView(1, state)
         interaction = SimpleNamespace(response=SimpleNamespace(edit_message=AsyncMock()), id=123)
         with patch.object(bot.game, 'read', return_value=state):
@@ -78,6 +79,19 @@ class AutoGrowthTests(unittest.IsolatedAsyncioTestCase):
         updated = interaction.response.edit_message.call_args.kwargs['view']
         self.assertEqual(updated.crop, 'tomato')
         updated.stop()
+
+    async def test_locked_shop_product_buttons_unlock_after_expansion(self):
+        state = self.state(1800)
+        locked = bot.ShopView(1, state, crop='tomato')
+        purchases = [b for b in locked.children if isinstance(b, bot.discord.ui.Button) and '개 구매' in b.label]
+        self.assertEqual(len(purchases), 2)
+        self.assertTrue(all(b.disabled for b in purchases))
+        self.assertIn('3번 밭', locked.embed().fields[-1].value)
+        state['rows'] = 3
+        opened = bot.ShopView(1, state, crop='tomato')
+        self.assertTrue(all(not b.disabled for b in opened.children if isinstance(b, bot.discord.ui.Button) and '개 구매' in b.label))
+        locked.stop()
+        opened.stop()
 
     async def test_five_rows_visible_with_locks_and_unlock(self):
         state = self.state(1800)

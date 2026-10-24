@@ -30,8 +30,13 @@ class GameTests(unittest.TestCase):
         with self.game.transaction() as db:
             db.execute('UPDATE players SET state=? WHERE id=?', (json.dumps(self.s), '1'))
 
-    def test_existing_seed_packs_round_up_only_once(self):
+    def unlock_to(self, rows):
         self.fund()
+        while self.s['rows'] < rows:
+            self.act('expand')
+
+    def test_existing_seed_packs_round_up_only_once(self):
+        self.unlock_to(3)
         self.act('buy', crop='strawberry', quantity=3)
         self.act('buy', crop='carrot', quantity=2)
         self.act('buy', crop='tomato', quantity=1)
@@ -217,6 +222,7 @@ class GameTests(unittest.TestCase):
         self.assertIn('이전 100g', message)
 
     def test_multi_crop_records_reported_separately(self):
+        self.unlock_to(3)
         self.act('buy', crop='tomato')
         self.act('plant', crop='carrot', plot=0)
         self.act('plant', crop='tomato', plot=1)
@@ -279,7 +285,8 @@ class GameTests(unittest.TestCase):
             import json
             self.s['gold'] = 100000
             db.execute('UPDATE players SET state=? WHERE id=?', (json.dumps(self.s), '1'))
-        self.act('buy', crop='tomato', quantity=10)
+        self.unlock_to(3)
+        self.act('buy', crop='tomato', quantity=15)
         self.act('buy_fertilizer')
         self.act('reserve_fertilizer', row=1)
         self.act('plant', crop='tomato')
@@ -301,9 +308,7 @@ class GameTests(unittest.TestCase):
         self.assertEqual(self.s['fertilizer'], 1)
 
     def test_all_growth_times_and_crop_sale(self):
-        self.fund()
-        self.act('expand')
-        self.act('expand')
+        self.unlock_to(5)
         for key in CROPS:
             if key != 'carrot':
                 self.act('buy', crop=key)
@@ -338,6 +343,25 @@ class GameTests(unittest.TestCase):
         self.assertEqual(restored['seeds']['strawberry'], 0)
         self.assertEqual(restored['seeds']['cucumber'], 0)
         self.assertEqual(restored['seeds']['carrot'], 5)
+
+    def test_crop_unlocks_block_buy_and_plant_until_required_farm(self):
+        self.fund()
+        for key,c in CROPS.items():
+            if c['required_rows'] > 1:
+                before = self.game.read(1)
+                with self.assertRaises(GameError):
+                    self.act('buy', crop=key, quantity=5)
+                with self.assertRaises(GameError):
+                    self.act('plant', crop=key, row=0)
+                self.assertEqual(self.game.read(1), before)
+        for tier in range(1,6):
+            if tier > 1:
+                notice = self.act('expand')
+                self.assertIn('새 작물 개방', notice)
+            for key,c in CROPS.items():
+                if c['required_rows'] == tier:
+                    self.act('buy', crop=key, quantity=5)
+                    self.assertGreaterEqual(self.s['seeds'][key], 5)
 
     def test_expansion_max_and_revenue_not_decreased(self):
         # 초기 자금으로 첫 확장, 반복 농사로 나머지 확장 비용 획득.

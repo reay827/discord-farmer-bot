@@ -188,6 +188,8 @@ class Game:
         if action == 'buy':
             if crop is None or type(quantity) is not int or not 1 <= quantity <= 999:
                 raise GameError('씨앗은 1~999개까지 구매할 수 있어요.')
+            if s['rows'] < CROPS[crop].get('required_rows', 1):
+                raise GameError(f"🔒 {CROPS[crop]['name']}은 {CROPS[crop]['required_rows']}번 밭 개방 후 구매할 수 있어요.")
             price = CROPS[crop]['seed_price'] * quantity
             self.pay(s, price)
             s['seeds'][crop] += quantity
@@ -198,7 +200,8 @@ class Game:
             price = CONFIG['expansion_prices'][s['rows']-1]
             self.pay(s, price)
             s['rows'] += 1
-            return f"{s['rows']}번째 줄 개방! · {price}골드"
+            unlocked = ' · '.join(c['emoji']+' '+c['name'] for c in CROPS.values() if c.get('required_rows',1) == s['rows'])
+            return f"{s['rows']}번 밭 개방! · {price}골드\n🌱 새 작물 개방: {unlocked}"
         if action == 'scarecrow':
             if s['scarecrow']:
                 raise GameError('이미 허수아비가 있어요.')
@@ -208,6 +211,8 @@ class Game:
         if action == 'plant':
             if crop is None:
                 raise GameError('작물을 선택해 주세요.')
+            if s['rows'] < CROPS[crop].get('required_rows', 1):
+                raise GameError(f"🔒 {CROPS[crop]['name']}은 {CROPS[crop]['required_rows']}번 밭 개방 후 심을 수 있어요.")
             if plot is not None and (type(plot) is not int or not 0 <= plot < s['rows']*5):
                 raise GameError('열린 밭을 선택해 주세요.')
             targets = [plot] if plot is not None else list(range(s['rows']*5))

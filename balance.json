@@ -22,7 +22,8 @@
       "seconds": 30,
       "seed_price": 2,
       "base_sale": 6,
-      "base_weight": 150
+      "base_weight": 150,
+      "required_rows": 1
     },
     "carrot": {
       "name": "당근",
@@ -30,7 +31,8 @@
       "seconds": 60,
       "seed_price": 5,
       "base_sale": 14,
-      "base_weight": 100
+      "base_weight": 100,
+      "required_rows": 1
     },
     "pumpkin": {
       "name": "호박",
@@ -38,7 +40,8 @@
       "seconds": 300,
       "seed_price": 10,
       "base_sale": 60,
-      "base_weight": 2000
+      "base_weight": 2000,
+      "required_rows": 1
     },
     "cucumber": {
       "name": "오이",
@@ -46,7 +49,8 @@
       "seconds": 600,
       "seed_price": 20,
       "base_sale": 130,
-      "base_weight": 300
+      "base_weight": 300,
+      "required_rows": 2
     },
     "eggplant": {
       "name": "가지",
@@ -54,7 +58,8 @@
       "seconds": 900,
       "seed_price": 30,
       "base_sale": 210,
-      "base_weight": 250
+      "base_weight": 250,
+      "required_rows": 2
     },
     "strawberry": {
       "name": "딸기",
@@ -62,7 +67,8 @@
       "seconds": 1800,
       "seed_price": 60,
       "base_sale": 450,
-      "base_weight": 20
+      "base_weight": 20,
+      "required_rows": 2
     },
     "tomato": {
       "name": "토마토",
@@ -70,7 +76,8 @@
       "seconds": 3600,
       "seed_price": 100,
       "base_sale": 940,
-      "base_weight": 200
+      "base_weight": 200,
+      "required_rows": 3
     },
     "grape": {
       "name": "포도",
@@ -78,7 +85,8 @@
       "seconds": 7200,
       "seed_price": 200,
       "base_sale": 2000,
-      "base_weight": 500
+      "base_weight": 500,
+      "required_rows": 3
     },
     "pear": {
       "name": "배",
@@ -86,7 +94,8 @@
       "seconds": 14400,
       "seed_price": 400,
       "base_sale": 4240,
-      "base_weight": 600
+      "base_weight": 600,
+      "required_rows": 4
     },
     "tangerine": {
       "name": "귤",
@@ -94,7 +103,8 @@
       "seconds": 28800,
       "seed_price": 800,
       "base_sale": 8960,
-      "base_weight": 100
+      "base_weight": 100,
+      "required_rows": 4
     },
     "rice": {
       "name": "쌀",
@@ -102,7 +112,8 @@
       "seconds": 43200,
       "seed_price": 1200,
       "base_sale": 14160,
-      "base_weight": 1000
+      "base_weight": 1000,
+      "required_rows": 5
     },
     "cotton": {
       "name": "목화",
@@ -110,7 +121,8 @@
       "seconds": 86400,
       "seed_price": 2400,
       "base_sale": 29760,
-      "base_weight": 200
+      "base_weight": 200,
+      "required_rows": 5
     }
   }
 }

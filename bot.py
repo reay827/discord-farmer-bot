@@ -267,7 +267,7 @@ class ShopView(discord.ui.View):
             menu.callback = choose_crop
             self.add_item(menu)
             c = CROPS[crop]
-            for quantity in (1, 5, 25):
+            for quantity in ((5, 25) if crop == 'carrot' else (1, 5, 25)):
                 button = discord.ui.Button(label=f"{quantity}개 구매 · {c['seed_price']*quantity}G", emoji=c['emoji'], row=2, style=discord.ButtonStyle.green)
                 async def callback(interaction, quantity=quantity):
                     await self.buy(interaction, 'buy', crop=self.crop, quantity=quantity)

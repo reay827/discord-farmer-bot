@@ -40,6 +40,8 @@ def prepare_state(state):
     state.setdefault('fertilizer_rows', [False]*5)
     state.setdefault('attendance_last_date', None)
     state.setdefault('attendance_streak', 0)
+    for crop in CROPS:
+        state['seeds'].setdefault(crop, 0)
     return state
 
 

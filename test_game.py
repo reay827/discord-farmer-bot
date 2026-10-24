@@ -196,7 +196,7 @@ class GameTests(unittest.TestCase):
         self.act('buy', crop='tomato')
         self.act('plant', crop='carrot', plot=0)
         self.act('plant', crop='tomato', plot=1)
-        self.now += 300
+        self.now += 900
         message = self.act('harvest')
         self.assertEqual(message.count('첫 기록!'), 2)
         self.assertIn('🥕 당근', message)
@@ -259,8 +259,8 @@ class GameTests(unittest.TestCase):
         self.act('buy_fertilizer')
         self.act('reserve_fertilizer', row=1)
         self.act('plant', crop='tomato')
-        self.assertEqual(self.s['plots'][0]['ready'], self.now+300)
-        self.assertEqual(self.s['plots'][5]['ready'], self.now+240)
+        self.assertEqual(self.s['plots'][0]['ready'], self.now+900)
+        self.assertEqual(self.s['plots'][5]['ready'], self.now+720)
         self.assertEqual(self.s['fertilizer'], 0)
 
     def test_existing_save_without_fertilizer_fields(self):
@@ -277,6 +277,7 @@ class GameTests(unittest.TestCase):
         self.assertEqual(self.s['fertilizer'], 1)
 
     def test_all_growth_times_and_crop_sale(self):
+        self.act('buy', crop='strawberry')
         self.act('buy', crop='tomato')
         self.act('buy', crop='pumpkin')
         for i, key in enumerate(CROPS):
@@ -287,12 +288,27 @@ class GameTests(unittest.TestCase):
         receipt = self.act('sell', crop='tomato')
         self.assertIn('🍅 토마토 1개', receipt)
         self.assertNotIn('🥕 당근', receipt)
-        self.assertEqual({x['crop'] for x in self.s['bag']}, {'carrot','pumpkin'})
+        self.assertEqual({x['crop'] for x in self.s['bag']}, {'strawberry','carrot','pumpkin'})
         total = sum(x['value'] for x in self.s['bag'])
         receipt = self.act('sell')
         self.assertIn('🥕 당근 1개', receipt)
         self.assertIn('🎃 호박 1개', receipt)
-        self.assertIn(f'총 2개 · +{total:,}골드', receipt)
+        self.assertIn(f'총 3개 · +{total:,}골드', receipt)
+
+    def test_crop_profit_progression_and_new_crop_migration(self):
+        profit = {k: c['base_sale']-c['seed_price'] for k,c in CROPS.items()}
+        self.assertGreater(profit['carrot'], profit['strawberry']*3)
+        self.assertGreater(profit['tomato'], profit['carrot']*30)
+        self.assertGreater(profit['pumpkin'], profit['tomato']*2)
+        import json
+        with self.game.transaction() as db:
+            old = self.s.copy()
+            old['seeds'] = dict(old['seeds'])
+            del old['seeds']['strawberry']
+            db.execute('UPDATE players SET state=? WHERE id=?', (json.dumps(old), '1'))
+        restored = self.game.read(1)
+        self.assertEqual(restored['seeds']['strawberry'], 0)
+        self.assertEqual(restored['seeds']['carrot'], 5)
 
     def test_expansion_max_and_revenue_not_decreased(self):
         # 초기 자금으로 첫 확장, 반복 농사로 나머지 확장 비용 획득.

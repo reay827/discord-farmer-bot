@@ -11,8 +11,9 @@
   "bird_probability": 0.05,
   "bird_value_multiplier": 0.9,
   "crops": {
-    "carrot": {"name": "당근", "emoji": "🥕", "seconds": 30, "seed_price": 5, "base_sale": 8, "base_weight": 100},
-    "tomato": {"name": "토마토", "emoji": "🍅", "seconds": 300, "seed_price": 20, "base_sale": 60, "base_weight": 200},
-    "pumpkin": {"name": "호박", "emoji": "🎃", "seconds": 1800, "seed_price": 60, "base_sale": 330, "base_weight": 2000}
+    "strawberry": {"name": "딸기", "emoji": "🍓", "seconds": 10, "seed_price": 1, "base_sale": 2, "base_weight": 20},
+    "carrot": {"name": "당근", "emoji": "🥕", "seconds": 30, "seed_price": 5, "base_sale": 9, "base_weight": 100},
+    "tomato": {"name": "토마토", "emoji": "🍅", "seconds": 900, "seed_price": 30, "base_sale": 165, "base_weight": 200},
+    "pumpkin": {"name": "호박", "emoji": "🎃", "seconds": 1800, "seed_price": 60, "base_sale": 360, "base_weight": 2000}
   }
 }

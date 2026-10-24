@@ -17,6 +17,17 @@ db_path = Path(os.getenv('DATABASE_PATH', 'data/farm.db'))
 game = Game(db_path if db_path.is_absolute() else ROOT / db_path)
 
 
+def duration_text(seconds):
+    seconds = int(seconds)
+    minutes, seconds = divmod(seconds, 60)
+    return (f'{minutes}분 ' if minutes else '') + (f'{seconds}초' if seconds or not minutes else '')
+
+
+def crop_times(fertilizer=False):
+    return ' · '.join(f"{c['name']} {duration_text(c['seconds'])}" +
+        (f" → {duration_text(c['seconds']*CONFIG['fertilizer_growth_multiplier'])}" if fertilizer else '') for c in CROPS.values())
+
+
 def farm_embed(s, notice='', public_name=None):
     grid = []
     for row in range(5):
@@ -293,7 +304,7 @@ class FertilizerView(discord.ui.View):
             f"보유 **{self.state.get('fertilizer', 0)}개** · 예약 **{reserved}개**\n\n"
             f'선택한 밭: **{self.row+1}번 밭 (가로 한 줄 5칸)**\n'
             '효과: 다음 심기 성장 시간 **20% 감소**\n'
-            '당근 30초 → 24초 · 토마토 5분 → 4분 · 호박 30분 → 24분\n\n'
+            + crop_times(fertilizer=True) + '\n\n'
             '빈 밭에만 예약할 수 있어요. 심기에 성공하면 1개 소모돼요.\n'
             '예약을 취소하거나 심기에 실패하면 소모되지 않아요. 무게 확률은 그대로예요.', color=0x78AD70)
 
@@ -393,7 +404,7 @@ class ShopView(discord.ui.View):
         return embed
 
     @discord.ui.select(placeholder='🗂️ 카테고리 선택', row=0, options=[
-        discord.SelectOption(label='씨앗', value='seeds', emoji='🌱', description='당근 · 토마토 · 호박'),
+        discord.SelectOption(label='씨앗', value='seeds', emoji='🌱', description='딸기 · 당근 · 토마토 · 호박'),
         discord.SelectOption(label='비료', value='fertilizer', emoji='🌿', description='일회용 성장 비료 · 다음 심기 20% 단축'),
         discord.SelectOption(label='농장 용품', value='supplies', emoji='🧰', description='농장을 지켜 주는 허수아비')])
     async def category_menu(self, interaction, select):
@@ -539,7 +550,7 @@ async def help_command(interaction: discord.Interaction):
         '🌿 성장 비료: 5G, 빈 밭 한 줄의 다음 심기에 1개 소모하고 성장 시간 20% 감소. 농장의 비료 사용 버튼에서 예약해요.\n'
         '/판매: 작물별 또는 전체 판매 · /순위: 범위 선택, crop 생략 시 누적 판매 수익\n'
         f"📅 /출석: 매일 {CONFIG['attendance_daily_gold']}골드, 연속 {CONFIG['attendance_bonus_days']}일마다 추가 {CONFIG['attendance_bonus_gold']}골드. 한국 시간 0시 기준, 모든 서버에서 하루 한 번이에요.\n"
-        '당근 30초 · 토마토 5분 · 호박 30분. 작물은 시들지 않아요.\n'
+        + crop_times() + '. 작물은 시들지 않아요.\n'
         '전체 심기는 빈 밭 수만큼 씨앗이 있어야 해요. 한 줄씩 최대 25칸까지 확장해요.\n'
         '농장은 모든 서버에서 공유해요. 기록은 판매해도 유지돼요.\n'
         '새 피해 확률 5%, 판매가 10% 감소. 크기 기록은 그대로예요. 허수아비는 영구적이에요.\n'

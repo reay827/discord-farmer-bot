@@ -25,7 +25,7 @@ def farm_embed(s, notice=''):
             p = s['plots'][row*5+col]
             cells.append('🔒' if row >= s['rows'] else '🟫' if p is None else
                          CROPS[p['crop']]['emoji'] if p['ready'] <= time.time() else '🌱')
-        grid.append(f'{row+1}번 밭  ' + ' '.join(cells))
+        grid.append(f'**{row+1}번 밭**\n' + ' '.join(cells))
     embed = discord.Embed(title='🌿 나의 작은 농장', description=notice+'\n\n'+'\n'.join(grid), color=0x78AD70)
     embed.add_field(name='지갑', value=f"{s['gold']:,}골드")
     embed.add_field(name='누적 판매', value=f"{s['revenue']:,}골드")
@@ -53,7 +53,7 @@ class FarmView(discord.ui.View):
             empty = sum(p is None for p in state['plots'][i*5:i*5+5])
             description = f'가로 한 줄 5칸 · 빈 칸 {empty}개' if opened else '잠김 · 위에서부터 줄 확장 구매로 개방'
             self.plot_menu.options.append(discord.SelectOption(label=f"{i+1}번 밭{' · 잠김' if not opened else ''}", value=str(i), emoji='🟫' if opened else '🔒', description=description, default=i==0))
-        self.expand.label = '최대 확장 완료' if state['rows'] == 5 else f"다음 줄 확장 · {CONFIG['expansion_prices'][state['rows']-1]}골드"
+        self.expand.label = '최대 확장 완료' if state['rows'] == 5 else f"다음 밭 확장 · {CONFIG['expansion_prices'][state['rows']-1]}골드"
         self.expand.disabled = state['rows'] == 5
 
     def watch(self, message):
@@ -122,7 +122,7 @@ class FarmView(discord.ui.View):
     async def plot_menu(self, interaction, select):
         row = None if select.values[0] == 'all' else int(select.values[0])
         if row is not None and row >= self.open_rows:
-            await interaction.response.send_message(f'🔒 {row+1}번 밭은 아직 잠겨 있어요. 다음 줄 확장 버튼으로 순서대로 구매해 주세요.', ephemeral=True)
+            await interaction.response.send_message(f'🔒 {row+1}번 밭은 아직 잠겨 있어요. 다음 밭 확장 버튼으로 순서대로 구매해 주세요.', ephemeral=True)
             return
         self.row = row
         for option in select.options:
@@ -141,7 +141,7 @@ class FarmView(discord.ui.View):
     async def sell(self, interaction, button):
         await self.action(interaction, 'sell')
 
-    @discord.ui.button(label='다음 줄 확장', row=3)
+    @discord.ui.button(label='다음 밭 확장', row=3)
     async def expand(self, interaction, button):
         await self.action(interaction, 'expand')
 

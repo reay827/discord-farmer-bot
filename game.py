@@ -139,6 +139,8 @@ class Game:
             return f"{CROPS[crop]['name']} {len(targets)}칸에 심었어요."
         if action == 'harvest':
             count = 0
+            previous_records = s['records'].copy()
+            harvested = {}
             for i, p in enumerate(s['plots']):
                 if p is None or p['ready'] > self.clock():
                     continue
@@ -151,11 +153,21 @@ class Game:
                                      (CONFIG['bird_value_multiplier'] if p['bird'] else 1)))
                 s['bag'].append(dict(crop=p['crop'], weight=weight, value=value, bird=p['bird']))
                 s['records'][p['crop']] = max(s['records'].get(p['crop'], 0), weight)
+                harvested[p['crop']] = harvested.get(p['crop'], 0) + 1
                 s['plots'][i] = None
                 count += 1
             if not count:
                 raise GameError('아직 수확할 작물이 없어요.')
-            return f'{count}개 수확했어요! /가방에서 무게와 등급을 확인하세요.'
+            summary = ' · '.join(f"{CROPS[key]['emoji']} {CROPS[key]['name']} {amount}개" for key, amount in harvested.items())
+            lines = [f'🧺 수확 완료! {summary}']
+            for key in harvested:
+                c = CROPS[key]
+                old, best = previous_records.get(key, 0), s['records'][key]
+                if old == 0:
+                    lines.append(f"🌱 첫 기록! {c['emoji']} {c['name']} **{best:,}g**")
+                elif best > old:
+                    lines.append(f"✨ 개인 신기록! {c['emoji']} {c['name']} **{best:,}g** · 이전 {old:,}g")
+            return '\n'.join(lines)
         if action == 'sell':
             items = [x for x in s['bag'] if crop is None or x['crop'] == crop]
             if not items:

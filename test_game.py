@@ -105,6 +105,44 @@ class GameTests(unittest.TestCase):
         self.assertEqual(self.s['seeds']['carrot'], 0)
         self.assertTrue(all(self.s['plots'][i] for i in range(5)))
 
+    def test_harvest_record_notices_first_tie_and_new_best(self):
+        class FixedWeights:
+            ratio = 1
+            def random(self): return .5
+            def uniform(self, a, b): return self.ratio
+        rng = FixedWeights()
+        self.game.rng = rng
+        self.act('plant', crop='carrot', row=0)
+        self.now += 30
+        message = self.act('harvest')
+        self.assertEqual(message.count('첫 기록!'), 1)
+        self.assertIn('100g', message)
+        self.assertIn('당근 5개', message)
+        self.act('buy', crop='carrot', quantity=5)
+        self.act('plant', crop='carrot', row=0)
+        self.now += 30
+        message = self.act('harvest')
+        self.assertNotIn('신기록', message)
+        self.assertNotIn('첫 기록', message)
+        self.act('buy', crop='carrot', quantity=5)
+        self.act('plant', crop='carrot', row=0)
+        rng.ratio = 1.2
+        self.now += 30
+        message = self.act('harvest')
+        self.assertEqual(message.count('개인 신기록!'), 1)
+        self.assertIn('120g', message)
+        self.assertIn('이전 100g', message)
+
+    def test_multi_crop_records_reported_separately(self):
+        self.act('buy', crop='tomato')
+        self.act('plant', crop='carrot', plot=0)
+        self.act('plant', crop='tomato', plot=1)
+        self.now += 300
+        message = self.act('harvest')
+        self.assertEqual(message.count('첫 기록!'), 2)
+        self.assertIn('🥕 당근', message)
+        self.assertIn('🍅 토마토', message)
+
     def test_all_growth_times_and_crop_sale(self):
         self.act('buy', crop='tomato')
         self.act('buy', crop='pumpkin')

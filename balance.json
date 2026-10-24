@@ -1,0 +1,13 @@
+{
+  "starting_gold": 100,
+  "starting_seeds": 5,
+  "expansion_prices": [100, 400, 1000, 2500],
+  "scarecrow_price": 300,
+  "bird_probability": 0.05,
+  "bird_value_multiplier": 0.9,
+  "crops": {
+    "carrot": {"name": "당근", "emoji": "🥕", "seconds": 30, "seed_price": 5, "base_sale": 8, "base_weight": 100},
+    "tomato": {"name": "토마토", "emoji": "🍅", "seconds": 300, "seed_price": 20, "base_sale": 60, "base_weight": 200},
+    "pumpkin": {"name": "호박", "emoji": "🎃", "seconds": 1800, "seed_price": 60, "base_sale": 330, "base_weight": 2000}
+  }
+}

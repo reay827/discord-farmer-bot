@@ -30,7 +30,17 @@ def farm_embed(s, notice=''):
     embed.add_field(name='지갑', value=f"{s['gold']:,}골드")
     embed.add_field(name='누적 판매', value=f"{s['revenue']:,}골드")
     embed.add_field(name='밭 / 허수아비', value=f"{s['rows']*5}/25칸 · {'설치됨' if s['scarecrow'] else '없음'}")
-    growing = [f"{i//5+1}번 밭·{i%5+1}칸 {CROPS[p['crop']]['name']} · <t:{int(p['ready'])}:R>" for i,p in enumerate(s['plots']) if p and p['ready'] > time.time()]
+    growing = []
+    now = time.time()
+    for row in range(5):
+        groups = {}
+        for p in s['plots'][row*5:row*5+5]:
+            if p and p['ready'] > now:
+                # 한 번의 심기에서 생긴 미세한 시각 차이는 같은 완료 시각으로 표시합니다.
+                key = (p['crop'], int(p['ready']))
+                groups[key] = True
+        for crop, ready in groups:
+            growing.append(f"{('1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣')[row]} {CROPS[crop]['name']} · <t:{ready}:R>")
     if growing:
         embed.add_field(name='성장 완료 예정', value='\n'.join(growing), inline=False)
     embed.set_footer(text='🟫 빈 밭 · 🌱 성장 중 · 작물 그림은 수확 가능 | 성장이 끝나면 자동으로 바뀝니다.')

@@ -133,8 +133,9 @@ class Game:
             if s['seeds'][crop] < len(targets):
                 raise GameError(f"씨앗 {len(targets)}개가 필요해요. 현재 {s['seeds'][crop]}개예요.")
             s['seeds'][crop] -= len(targets)
+            ready = self.clock() + CROPS[crop]['seconds']
             for i in targets:
-                s['plots'][i] = dict(crop=crop, ready=self.clock()+CROPS[crop]['seconds'],
+                s['plots'][i] = dict(crop=crop, ready=ready,
                                      bird=(not s['scarecrow'] and self.rng.random() < CONFIG['bird_probability']))
             return f"{CROPS[crop]['name']} {len(targets)}칸에 심었어요."
         if action == 'harvest':

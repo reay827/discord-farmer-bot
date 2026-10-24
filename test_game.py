@@ -24,6 +24,23 @@ class GameTests(unittest.TestCase):
         self.s, message = self.game.act(1, self.s['version'], self.counter, action, **args)
         return message
 
+    def test_existing_seed_packs_round_up_only_once(self):
+        self.act('buy', crop='strawberry', quantity=3)
+        self.act('buy', crop='carrot', quantity=2)
+        self.act('buy', crop='tomato', quantity=1)
+        before = self.game.read(1)
+        self.assertEqual(self.game.round_seed_packs_once(), (1, 9))
+        state = self.game.read(1)
+        self.assertEqual(state['seeds'], dict(strawberry=5, carrot=10, tomato=5, pumpkin=0))
+        self.assertEqual(state['gold'], before['gold'])
+        self.assertEqual(state['plots'], before['plots'])
+        self.assertEqual(state['bag'], before['bag'])
+        self.assertEqual(state['version'], before['version']+1)
+        self.s = state
+        self.act('plant', crop='strawberry', plot=0)
+        self.assertEqual(self.game.round_seed_packs_once(), (0, 0))
+        self.assertEqual(self.game.read(1)['seeds']['strawberry'], 4)
+
     def test_daily_reward_once_across_servers_and_restart(self):
         self.now = datetime(2026, 10, 24, 12, tzinfo=KST).timestamp()
         self.act('checkin')

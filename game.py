@@ -105,6 +105,30 @@ class Game:
             raise GameError('먼저 /농장으로 시작해 주세요.')
         return prepare_state(json.loads(row[0]))
 
+    def round_seed_packs_once(self):
+        """기존 씨앗을 5개 단위로 올림하는 일회성 보정. 보상 재지급을 방지합니다."""
+        with self.transaction() as db:
+            db.execute('CREATE TABLE IF NOT EXISTS migrations (id TEXT PRIMARY KEY)')
+            key = 'seed-packs-of-five-v1'
+            if db.execute('SELECT 1 FROM migrations WHERE id=?', (key,)).fetchone():
+                return 0, 0
+            changed, added = 0, 0
+            for uid, raw in db.execute('SELECT id,state FROM players').fetchall():
+                state = prepare_state(json.loads(raw))
+                extra = 0
+                for crop in CROPS:
+                    count = state['seeds'][crop]
+                    rounded = ((count+4)//5)*5
+                    extra += rounded-count
+                    state['seeds'][crop] = rounded
+                if extra:
+                    state['version'] += 1
+                    db.execute('UPDATE players SET state=? WHERE id=?', (json.dumps(state), uid))
+                    changed += 1
+                    added += extra
+            db.execute('INSERT INTO migrations VALUES(?)', (key,))
+            return changed, added
+
     def act(self, user, version, operation, action, **args):
         with self.transaction() as db:
             row = db.execute('SELECT state FROM players WHERE id=?', (str(user),)).fetchone()

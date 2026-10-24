@@ -60,7 +60,7 @@ class AutoGrowthTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(bot.game, 'read', return_value=state):
             await supplies.navigate(interaction, 'seeds', 'tomato')
         seeds = interaction.response.edit_message.call_args.kwargs['view']
-        self.assertEqual(len(seeds.children), 6)
+        self.assertEqual(len(seeds.children), 5)
         self.assertIn('토마토', seeds.embed().fields[1].name)
         with patch.object(bot.game, 'act', return_value=(state, '구매 완료')) as act:
             button = next(item for item in seeds.children if isinstance(item, bot.discord.ui.Button) and item.label.startswith('5개 구매'))

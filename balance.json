@@ -1,6 +1,9 @@
 {
   "starting_gold": 100,
   "starting_seeds": 5,
+  "attendance_daily_gold": 30,
+  "attendance_bonus_days": 7,
+  "attendance_bonus_gold": 100,
   "expansion_prices": [100, 400, 1000, 2500],
   "scarecrow_price": 300,
   "fertilizer_price": 5,

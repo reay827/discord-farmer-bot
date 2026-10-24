@@ -4,10 +4,21 @@ import random
 import sqlite3
 import time
 from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 CONFIG = json.loads(Path(__file__).with_name('balance.json').read_text(encoding='utf-8'))
 CROPS = CONFIG['crops']
+KST = timezone(timedelta(hours=9))
+
+
+def attendance_status(state, now):
+    today = datetime.fromtimestamp(now, KST).date()
+    last = state.get('attendance_last_date')
+    streak = state.get('attendance_streak', 0)
+    claimed = last is not None and last >= today.isoformat()
+    next_streak = streak + 1 if last == (today-timedelta(days=1)).isoformat() else 1
+    return today.isoformat(), claimed, streak if claimed else next_streak
 
 
 class GameError(Exception):
@@ -27,6 +38,8 @@ def prepare_state(state):
     # 기존 농장의 재화와 작물은 유지하고 새 필드만 기본값으로 보완합니다.
     state.setdefault('fertilizer', 0)
     state.setdefault('fertilizer_rows', [False]*5)
+    state.setdefault('attendance_last_date', None)
+    state.setdefault('attendance_streak', 0)
     return state
 
 
@@ -109,6 +122,20 @@ class Game:
     def _apply(self, s, action, crop=None, quantity=1, plot=None, row=None):
         if crop is not None and crop not in CROPS:
             raise GameError('알 수 없는 작물이에요.')
+        if action == 'checkin':
+            today, claimed, streak = attendance_status(s, self.clock())
+            if claimed:
+                raise GameError('오늘 출석 보상은 이미 받았어요. 한국 시간 내일 0시 이후 다시 받아 주세요.')
+            daily = CONFIG['attendance_daily_gold']
+            bonus = CONFIG['attendance_bonus_gold'] if streak % CONFIG['attendance_bonus_days'] == 0 else 0
+            s['attendance_last_date'] = today
+            s['attendance_streak'] = streak
+            s['gold'] += daily + bonus
+            lines = [f'📅 출석 완료! 연속 {streak}일째 · +{daily}골드']
+            if bonus:
+                lines.append(f"🎁 연속 {CONFIG['attendance_bonus_days']}일 달성 보너스! +{bonus}골드")
+            lines.append(f"💰 현재 {s['gold']:,}골드 · 다음 출석은 한국 시간 내일 0시부터")
+            return '\n'.join(lines)
         if action == 'buy_fertilizer':
             if type(quantity) is not int or not 1 <= quantity <= 999:
                 raise GameError('비료는 1~999개까지 구매할 수 있어요.')

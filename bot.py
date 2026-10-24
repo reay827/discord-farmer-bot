@@ -8,7 +8,7 @@ import discord
 from discord import app_commands
 from dotenv import load_dotenv
 
-from game import CONFIG, CROPS, Game, GameError, grade
+from game import CONFIG, CROPS, Game, GameError, grade, attendance_status
 
 ROOT = Path(__file__).resolve().parent
 load_dotenv(ROOT / '.env')
@@ -35,6 +35,10 @@ def farm_embed(s, notice='', public_name=None):
     reserved = [f"{('1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣')[i]} 다음 심기 성장 시간 20% 감소" for i, active in enumerate(s.get('fertilizer_rows', [])) if active]
     if public_name is None or reserved:
         embed.add_field(name=f"🌿 성장 비료 · 보유 {s.get('fertilizer', 0)}개", value='\n'.join(reserved) or '비료 사용 버튼에서 빈 밭에 예약할 수 있어요.', inline=False)
+    if public_name is None:
+        _, claimed, streak = attendance_status(s, time.time())
+        status = f'✅ 오늘 수령 완료 · 연속 {streak}일' if claimed else f"오늘 +{CONFIG['attendance_daily_gold']}골드 받기 · 출석 시 연속 {streak}일"
+        embed.add_field(name='📅 출석 보상', value=status, inline=False)
     growing = []
     now = time.time()
     for row in range(5):
@@ -141,6 +145,9 @@ class FarmView(discord.ui.View):
             self.plot_menu.options.append(discord.SelectOption(label=f"{i+1}번 밭{' · 잠김' if not opened else ''}", value=str(i), emoji='🟫' if opened else '🔒', description=description, default=i==0))
         self.expand.label = '최대 확장 완료' if state['rows'] == 5 else f"다음 밭 확장 · {CONFIG['expansion_prices'][state['rows']-1]}골드"
         self.expand.disabled = state['rows'] == 5
+        _, claimed, _ = attendance_status(state, time.time())
+        self.checkin.disabled = claimed
+        self.checkin.label = '오늘 출석 완료' if claimed else '출석 보상 받기'
 
     def watch(self, message):
         # 개인 응답 토큰이 유효한 동안만 자동 갱신합니다. 조작 때마다 새 토큰으로 교체합니다.
@@ -262,6 +269,10 @@ class FarmView(discord.ui.View):
         async with self._edit_lock:
             await interaction.response.edit_message(embed=view.embed(), view=view)
             self.stop()
+
+    @discord.ui.button(label='출석 보상 받기', emoji='📅', style=discord.ButtonStyle.green, row=4)
+    async def checkin(self, interaction, button):
+        await self.action(interaction, 'checkin')
 
 
 class FertilizerView(discord.ui.View):
@@ -495,6 +506,14 @@ async def sell(interaction: discord.Interaction, crop: str = None):
     await update_public_farms(interaction.user.id)
 
 
+@bot.tree.command(name='출석', description='매일 출석 골드와 연속 7일 추가 보상을 받아요')
+async def checkin_command(interaction: discord.Interaction):
+    state, _ = visit(interaction)
+    _, notice = game.act(interaction.user.id, state['version'], interaction.id, 'checkin')
+    await interaction.response.send_message(notice, ephemeral=True)
+    await update_public_farms(interaction.user.id)
+
+
 @bot.tree.command(name='순위', description='서버·전체의 작물별 최고 무게 또는 누적 판매 순위')
 @app_commands.choices(scope=[app_commands.Choice(name='현재 서버',value='server'),app_commands.Choice(name='봇 전체',value='global')], crop=CROP_CHOICES)
 async def ranking(interaction: discord.Interaction, scope: str = 'server', crop: str = None):
@@ -519,6 +538,7 @@ async def help_command(interaction: discord.Interaction):
         '/상점: 씨앗·비료·허수아비 구매 · /가방: 씨앗·비료·수확물·최고 기록\n'
         '🌿 성장 비료: 5G, 빈 밭 한 줄의 다음 심기에 1개 소모하고 성장 시간 20% 감소. 농장의 비료 사용 버튼에서 예약해요.\n'
         '/판매: 작물별 또는 전체 판매 · /순위: 범위 선택, crop 생략 시 누적 판매 수익\n'
+        f"📅 /출석: 매일 {CONFIG['attendance_daily_gold']}골드, 연속 {CONFIG['attendance_bonus_days']}일마다 추가 {CONFIG['attendance_bonus_gold']}골드. 한국 시간 0시 기준, 모든 서버에서 하루 한 번이에요.\n"
         '당근 30초 · 토마토 5분 · 호박 30분. 작물은 시들지 않아요.\n'
         '전체 심기는 빈 밭 수만큼 씨앗이 있어야 해요. 한 줄씩 최대 25칸까지 확장해요.\n'
         '농장은 모든 서버에서 공유해요. 기록은 판매해도 유지돼요.\n'

@@ -2,8 +2,9 @@ import concurrent.futures
 import tempfile
 import unittest
 from pathlib import Path
+from datetime import datetime
 
-from game import CONFIG, CROPS, Game, GameError
+from game import CONFIG, CROPS, Game, GameError, KST
 
 
 class GameTests(unittest.TestCase):
@@ -22,6 +23,64 @@ class GameTests(unittest.TestCase):
         self.counter += 1
         self.s, message = self.game.act(1, self.s['version'], self.counter, action, **args)
         return message
+
+    def test_daily_reward_once_across_servers_and_restart(self):
+        self.now = datetime(2026, 10, 24, 12, tzinfo=KST).timestamp()
+        self.act('checkin')
+        self.assertEqual(self.s['gold'], 130)
+        self.assertEqual(self.s['revenue'], 0)
+        self.assertEqual(self.game.ranking(), [])
+        self.game.visit(1, '농부', 20)
+        self.game = Game(self.path, clock=lambda: self.now)
+        before = self.game.read(1)
+        with self.assertRaises(GameError):
+            self.act('checkin')
+        self.assertEqual(self.game.read(1), before)
+
+    def test_korean_midnight_not_24_hour_wait(self):
+        self.now = datetime(2026, 10, 24, 23, 59, 59, tzinfo=KST).timestamp()
+        self.act('checkin')
+        self.now += 1
+        self.act('checkin')
+        self.assertEqual(self.s['attendance_streak'], 2)
+        self.assertEqual(self.s['gold'], 160)
+
+    def test_seven_day_bonus_repeats_every_seven_days(self):
+        self.now = datetime(2026, 10, 24, 12, tzinfo=KST).timestamp()
+        for day in range(1, 15):
+            message = self.act('checkin')
+            self.assertEqual('보너스!' in message, day % 7 == 0)
+            self.now += 86400
+        self.assertEqual(self.s['attendance_streak'], 14)
+        self.assertEqual(self.s['gold'], 100+14*30+2*100)
+        self.assertEqual(self.s['revenue'], 0)
+
+    def test_missing_day_resets_streak_without_taking_gold(self):
+        self.act('checkin')
+        self.now += 2*86400
+        self.act('checkin')
+        self.assertEqual(self.s['attendance_streak'], 1)
+        self.assertEqual(self.s['gold'], 160)
+
+    def test_zero_gold_can_buy_five_seeds_after_attendance(self):
+        self.act('expand')
+        self.assertEqual(self.s['gold'], 0)
+        self.act('checkin')
+        self.act('buy', crop='carrot', quantity=5)
+        self.assertEqual(self.s['gold'], 5)
+
+    def test_concurrent_attendance_pays_once(self):
+        def claim(op):
+            try:
+                state = self.game.read(1)
+                self.game.act(1, state['version'], op, 'checkin')
+                return True
+            except GameError:
+                return False
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+            results = list(pool.map(claim, range(100, 108)))
+        self.assertEqual(sum(results), 1)
+        self.assertEqual(self.game.read(1)['gold'], 130)
 
     def test_start_only_once_and_cross_server(self):
         self.act('buy', crop='carrot', quantity=1)

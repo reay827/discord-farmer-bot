@@ -95,6 +95,7 @@ class AutoGrowthTests(unittest.IsolatedAsyncioTestCase):
         message.id = 123
         message.flags = SimpleNamespace(ephemeral=False)
         interaction = SimpleNamespace(response=SimpleNamespace(edit_message=AsyncMock()), message=message,
+                                      original_response=AsyncMock(return_value=message),
                                       channel=SimpleNamespace(get_partial_message=lambda mid: message))
         with patch.object(bot.game, 'read', return_value=state):
             await farm.go_shop.callback(interaction)
@@ -111,21 +112,19 @@ class AutoGrowthTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(shop.is_finished())
         returned.stop()
 
-    async def test_private_shop_opens_public_farm(self):
+    async def test_private_shop_returns_to_same_private_farm(self):
         state = self.state(1800)
         shop = bot.ShopView(1, state)
         old = AsyncMock()
         old.flags = SimpleNamespace(ephemeral=True)
-        new = SimpleNamespace(id=456)
-        interaction = SimpleNamespace(message=old, response=SimpleNamespace(send_message=AsyncMock()),
-            original_response=AsyncMock(return_value=new),
+        interaction = SimpleNamespace(message=old, response=SimpleNamespace(edit_message=AsyncMock(), send_message=AsyncMock()),
+            original_response=AsyncMock(return_value=old),
             channel=SimpleNamespace(get_partial_message=lambda mid: AsyncMock()))
         with patch.object(bot.game, 'read', return_value=state):
             await shop.go_farm.callback(interaction)
-        interaction.response.send_message.assert_awaited_once()
-        self.assertNotIn('ephemeral', interaction.response.send_message.call_args.kwargs)
-        old.edit.assert_awaited_once_with(view=None)
-        returned = interaction.response.send_message.call_args.kwargs['view']
+        interaction.response.send_message.assert_not_awaited()
+        interaction.response.edit_message.assert_awaited_once()
+        returned = interaction.response.edit_message.call_args.kwargs['view']
         returned.stop()
 
     async def test_fertilizer_shop_and_reservation_return_to_farm(self):
@@ -135,6 +134,7 @@ class AutoGrowthTests(unittest.IsolatedAsyncioTestCase):
         shop = bot.ShopView(1, state, 'fertilizer')
         self.assertIn('성장 비료', shop.embed().fields[1].name)
         interaction = SimpleNamespace(id=456, response=SimpleNamespace(edit_message=AsyncMock(), send_message=AsyncMock()),
+            original_response=AsyncMock(return_value=AsyncMock()),
             message=SimpleNamespace(id=789), channel=SimpleNamespace(get_partial_message=lambda mid: AsyncMock()))
         with patch.object(bot.game, 'act', return_value=(state, '구매 완료')) as act:
             purchase = next(b for b in shop.children if isinstance(b, bot.discord.ui.Button) and b.label.startswith('1개 구매'))
@@ -149,3 +149,52 @@ class AutoGrowthTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsInstance(farm, bot.FarmView)
         self.assertTrue(fertilizer.is_finished())
         farm.stop()
+
+    async def test_public_button_opens_clickers_own_private_farm(self):
+        state = self.state(1800)
+        panel = bot.PublicFarmView(owner=1, name='구경할 농부')
+        message = AsyncMock()
+        interaction = SimpleNamespace(user=SimpleNamespace(id=2),
+            response=SimpleNamespace(send_message=AsyncMock()), original_response=AsyncMock(return_value=message))
+        with patch.object(bot, 'visit', return_value=(state, False)):
+            await panel.open_farm.callback(interaction)
+        args = interaction.response.send_message.call_args.kwargs
+        self.assertTrue(args['ephemeral'])
+        self.assertEqual(args['view'].user, 2)
+        self.assertEqual(len(panel.children), 1)
+        self.assertIsInstance(panel.children[0], bot.discord.ui.Button)
+        args['view'].stop()
+        panel.stop()
+
+    async def test_public_growth_finishes_without_private_screen(self):
+        state = self.state(.02)
+        message = AsyncMock()
+        panel = bot.PublicFarmView(owner=1, name='농부', message=message)
+        with patch.object(bot.game, 'read', return_value=state):
+            await asyncio.wait_for(panel.growth_loop(), timeout=1)
+        message.edit.assert_awaited_once()
+        embed = message.edit.call_args.kwargs['embed']
+        self.assertIn('농부님의 농장', embed.title)
+        self.assertIn('🥕', embed.description)
+        panel.stop()
+
+    async def test_action_updates_public_panel_but_keeps_private_controls(self):
+        state = self.state(1800)
+        private_message = AsyncMock()
+        public_message = AsyncMock()
+        panel = bot.PublicFarmView(owner=1, name='농부', message=public_message)
+        bot.public_farms[(1, 100)] = panel
+        farm = bot.FarmView(1, state)
+        interaction = SimpleNamespace(id=789, response=SimpleNamespace(edit_message=AsyncMock()),
+            original_response=AsyncMock(return_value=private_message))
+        try:
+            with patch.object(bot.game, 'act', return_value=(state, '심기 완료')), patch.object(bot.game, 'read', return_value=state):
+                await farm.action(interaction, 'plant', crop='carrot', row=0)
+            public_message.edit.assert_awaited_once()
+            self.assertIsInstance(public_message.edit.call_args.kwargs['view'], bot.PublicFarmView)
+            returned = interaction.response.edit_message.call_args.kwargs['view']
+            self.assertIsInstance(returned, bot.FarmView)
+            returned.stop()
+        finally:
+            panel.stop()
+            bot.public_farms.clear()

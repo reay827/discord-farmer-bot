@@ -17,7 +17,7 @@ db_path = Path(os.getenv('DATABASE_PATH', 'data/farm.db'))
 game = Game(db_path if db_path.is_absolute() else ROOT / db_path)
 
 
-def farm_embed(s, notice=''):
+def farm_embed(s, notice='', public_name=None):
     grid = []
     for row in range(5):
         cells = []
@@ -27,12 +27,14 @@ def farm_embed(s, notice=''):
                          CROPS[p['crop']]['emoji'] if p['ready'] <= time.time() else '🌱')
         fertilizer_marker = '　🌿' if s.get('fertilizer_rows', [False]*5)[row] else ''
         grid.append(('1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣')[row] + '　' + ' '.join(cells) + fertilizer_marker)
-    embed = discord.Embed(title='🌿 나의 작은 농장', description=notice+'\n\n'+'\n'.join(grid), color=0x78AD70)
+    title = f'🌿 {public_name}님의 농장' if public_name is not None else '🌿 나의 작은 농장'
+    embed = discord.Embed(title=title, description=notice+'\n\n'+'\n'.join(grid), color=0x78AD70)
     embed.add_field(name='지갑', value=f"{s['gold']:,}골드")
     embed.add_field(name='누적 판매', value=f"{s['revenue']:,}골드")
     embed.add_field(name='밭 / 허수아비', value=f"{s['rows']*5}/25칸 · {'설치됨' if s['scarecrow'] else '없음'}")
     reserved = [f"{('1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣')[i]} 다음 심기 성장 시간 20% 감소" for i, active in enumerate(s.get('fertilizer_rows', [])) if active]
-    embed.add_field(name=f"🌿 성장 비료 · 보유 {s.get('fertilizer', 0)}개", value='\n'.join(reserved) or '비료 사용 버튼에서 빈 밭에 예약할 수 있어요.', inline=False)
+    if public_name is None or reserved:
+        embed.add_field(name=f"🌿 성장 비료 · 보유 {s.get('fertilizer', 0)}개", value='\n'.join(reserved) or '비료 사용 버튼에서 빈 밭에 예약할 수 있어요.', inline=False)
     growing = []
     now = time.time()
     for row in range(5):
@@ -46,13 +48,84 @@ def farm_embed(s, notice=''):
             growing.append(f"{('1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣')[row]} {CROPS[crop]['name']} · <t:{ready}:R>")
     if growing:
         embed.add_field(name='성장 완료 예정', value='\n'.join(growing), inline=False)
-    embed.set_footer(text='🟫 빈 밭 · 🌱 성장 중 · 작물 그림은 수확 가능 | 성장이 끝나면 자동으로 바뀝니다.')
+    embed.set_footer(text='🟫 빈 밭 · 🌱 성장 중 · 작물 그림은 수확 가능 | ' +
+                     ('성장 완료 시 자동 갱신 · 버튼으로 각자의 농장을 열어 보세요.' if public_name is not None else
+                      '개인 화면은 마지막 조작 후 14분간 유효 · 만료되면 내 농장 열기를 다시 누르세요.'))
     return embed
+
+
+# 공개 메시지는 일반 봇 연결로, 개인 메시지는 각 상호작용 토큰으로 갱신합니다.
+public_farms = {}
+
+
+async def open_private_farm(interaction):
+    state, fresh = visit(interaction)
+    intro = '🌱 첫 농장에 오신 것을 환영해요! 당근 씨앗 5개와 100골드를 받았어요.' if fresh else ''
+    view = FarmView(interaction.user.id, state)
+    await interaction.response.send_message(embed=farm_embed(state, intro), view=view, ephemeral=True)
+    view.watch(await interaction.original_response())
+
+
+async def update_public_farms(user):
+    for key, panel in list(public_farms.items()):
+        if key[0] == user:
+            await panel.refresh()
+
+
+class PublicFarmView(discord.ui.View):
+    def __init__(self, owner=None, name=None, message=None):
+        super().__init__(timeout=None)
+        self.owner, self.name, self.message = owner, name, message
+        self.task = None
+        self.lock = asyncio.Lock()
+
+    @discord.ui.button(label='내 농장 열기', emoji='🌿', style=discord.ButtonStyle.green, custom_id='farm:open-private')
+    async def open_farm(self, interaction, button):
+        # 구경하던 농장의 주인이 아닌, 누른 사람의 농장을 엽니다.
+        await open_private_farm(interaction)
+
+    async def refresh(self):
+        async with self.lock:
+            try:
+                state = game.read(self.owner)
+                await self.message.edit(embed=farm_embed(state, public_name=self.name), view=self)
+            except (discord.NotFound, discord.Forbidden):
+                public_farms.pop((self.owner, self.message.channel.id), None)
+                self.stop()
+                return
+            except discord.HTTPException:
+                logging.warning('공개 농장 갱신 실패')
+                return
+            if self.task and self.task is not asyncio.current_task():
+                self.task.cancel()
+            self.task = asyncio.create_task(self.growth_loop())
+
+    async def growth_loop(self):
+        try:
+            while True:
+                state = game.read(self.owner)
+                deadlines = [p['ready'] for p in state['plots'] if p and p['ready'] > time.time()]
+                if not deadlines:
+                    return
+                await asyncio.sleep(max(0, min(deadlines)-time.time())+.1)
+                async with self.lock:
+                    state = game.read(self.owner)
+                    await self.message.edit(embed=farm_embed(state, public_name=self.name))
+        except (discord.NotFound, discord.Forbidden):
+            public_farms.pop((self.owner, self.message.channel.id), None)
+            self.stop()
+        except discord.HTTPException:
+            logging.warning('공개 농장 성장 갱신 실패')
+
+    def stop(self):
+        if self.task and self.task is not asyncio.current_task():
+            self.task.cancel()
+        super().stop()
 
 
 class FarmView(discord.ui.View):
     def __init__(self, user, state):
-        super().__init__(timeout=7200)
+        super().__init__(timeout=840)
         self._growth_task = None
         self._edit_lock = asyncio.Lock()
         self._deadlines = sorted({p['ready'] for p in state['plots'] if p and p['ready'] > time.time()})
@@ -70,8 +143,10 @@ class FarmView(discord.ui.View):
         self.expand.disabled = state['rows'] == 5
 
     def watch(self, message):
-        # 일반 채널 메시지로 수정하므로 15분짜리 interaction 토큰에 의존하지 않습니다.
-        if self._deadlines and self._growth_task is None:
+        # 개인 응답 토큰이 유효한 동안만 자동 갱신합니다. 조작 때마다 새 토큰으로 교체합니다.
+        if self._growth_task:
+            self._growth_task.cancel()
+        if self._deadlines:
             self._growth_task = asyncio.create_task(self._update_growth(message))
 
     async def _update_growth(self, message):
@@ -102,7 +177,7 @@ class FarmView(discord.ui.View):
         view = FarmView(self.user, state)
         async with self._edit_lock:
             await interaction.response.edit_message(embed=farm_embed(state, notice), view=view)
-            view.watch(interaction.channel.get_partial_message(interaction.message.id))
+            view.watch(await interaction.original_response())
             self.stop()
 
     async def interaction_check(self, interaction):
@@ -123,6 +198,7 @@ class FarmView(discord.ui.View):
             await interaction.response.send_message(str(error), ephemeral=True)
             return
         await self.replace(interaction, s, msg)
+        await update_public_farms(self.user)
 
     @discord.ui.select(placeholder='심을 작물 선택', row=0)
     async def crop_menu(self, interaction, select):
@@ -130,6 +206,7 @@ class FarmView(discord.ui.View):
         for option in select.options:
             option.default = option.value == self.crop
         await interaction.response.edit_message(view=self)
+        self.watch(await interaction.original_response())
 
     @discord.ui.select(placeholder='심을 밭 선택 · 한 밭은 가로 한 줄 5칸', row=1)
     async def plot_menu(self, interaction, select):
@@ -141,6 +218,7 @@ class FarmView(discord.ui.View):
         for option in select.options:
             option.default = option.value == select.values[0]
         await interaction.response.edit_message(view=self)
+        self.watch(await interaction.original_response())
 
     @discord.ui.button(label='선택한 밭에 심기', style=discord.ButtonStyle.green, row=2)
     async def plant(self, interaction, button):
@@ -169,6 +247,7 @@ class FarmView(discord.ui.View):
         for option in self.plot_menu.options:
             option.default = option.value == 'all'
         await interaction.response.edit_message(view=self)
+        self.watch(await interaction.original_response())
 
     @discord.ui.button(label='상점', emoji='🏪', style=discord.ButtonStyle.primary, row=4)
     async def go_shop(self, interaction, button):
@@ -227,7 +306,7 @@ class FertilizerView(discord.ui.View):
     async def return_farm(self, interaction, state, notice=''):
         view = FarmView(self.user, state)
         await interaction.response.edit_message(embed=farm_embed(state, notice), view=view)
-        view.watch(interaction.channel.get_partial_message(interaction.message.id))
+        view.watch(await interaction.original_response())
         self.stop()
 
     async def apply(self, interaction, action):
@@ -237,6 +316,7 @@ class FertilizerView(discord.ui.View):
             await interaction.response.send_message(str(error), ephemeral=True)
             return
         await self.return_farm(interaction, state, notice)
+        await update_public_farms(self.user)
 
     @discord.ui.button(label='다음 심기에 사용', emoji='🌿', style=discord.ButtonStyle.green, row=1)
     async def reserve(self, interaction, button):
@@ -312,15 +392,8 @@ class ShopView(discord.ui.View):
     async def go_farm(self, interaction, button):
         state = game.read(self.user)
         view = FarmView(self.user, state)
-        if interaction.message.flags.ephemeral:
-            # /상점은 비공개이므로 장시간 자동 갱신이 가능한 공개 농장 화면을 엽니다.
-            await interaction.response.send_message(embed=farm_embed(state), view=view)
-            message = await interaction.original_response()
-            await interaction.message.edit(view=None)
-        else:
-            await interaction.response.edit_message(content=None, embed=farm_embed(state), view=view)
-            message = interaction.message
-        view.watch(interaction.channel.get_partial_message(message.id))
+        await interaction.response.edit_message(content=None, embed=farm_embed(state), view=view)
+        view.watch(await interaction.original_response())
         self.stop()
 
     async def navigate(self, interaction, category, crop):
@@ -343,6 +416,7 @@ class ShopView(discord.ui.View):
         view = ShopView(self.user, s, self.category, self.crop)
         await interaction.response.edit_message(content=None, embed=view.embed(msg), view=view)
         self.stop()
+        await update_public_farms(self.user)
 
 
 class Bot(discord.Client):
@@ -351,6 +425,7 @@ class Bot(discord.Client):
         self.tree = app_commands.CommandTree(self)
 
     async def setup_hook(self):
+        self.add_view(PublicFarmView())
         guild_ids = os.getenv('TEST_GUILD_ID', '')
         if guild_ids.strip():
             for guild_id in dict.fromkeys(g.strip() for g in guild_ids.split(',') if g.strip()):
@@ -372,11 +447,17 @@ def visit(interaction):
 @bot.tree.command(name='농장', description='농장을 열고 심기·수확·판매·확장을 해요')
 async def farm(interaction: discord.Interaction):
     s, fresh = visit(interaction)
-    intro = '오래 비어 있던 작은 농장을 맡게 되었어요.\n우선 흙을 고른 첫 번째 밭에 씨앗을 심어볼까요?\n당근 씨앗 5개와 100골드를 받았어요. 심기 → 30초 후 새로고침 → 수확 → 판매 순서로 해보세요.' if fresh else ''
-    view = FarmView(interaction.user.id, s)
-    await interaction.response.send_message(embed=farm_embed(s, intro), view=view)
+    intro = '🌱 첫 농장이에요! 내 농장 열기 버튼을 눌러 첫 씨앗을 심어보세요.' if fresh else ''
+    view = PublicFarmView(interaction.user.id, interaction.user.display_name)
+    await interaction.response.send_message(embed=farm_embed(s, intro, public_name=interaction.user.display_name), view=view)
     message = await interaction.original_response()
-    view.watch(interaction.channel.get_partial_message(message.id))
+    view.message = interaction.channel.get_partial_message(message.id)
+    key = (interaction.user.id, interaction.channel.id)
+    previous = public_farms.get(key)
+    if previous:
+        previous.stop()
+    public_farms[key] = view
+    view.task = asyncio.create_task(view.growth_loop())
 
 
 @bot.tree.command(name='상점', description='씨앗과 영구 허수아비를 구매해요')
@@ -411,6 +492,7 @@ async def sell(interaction: discord.Interaction, crop: str = None):
     s, _ = visit(interaction)
     _, msg = game.act(interaction.user.id, s['version'], interaction.id, 'sell', crop=crop)
     await interaction.response.send_message(msg, ephemeral=True)
+    await update_public_farms(interaction.user.id)
 
 
 @bot.tree.command(name='순위', description='서버·전체의 작물별 최고 무게 또는 누적 판매 순위')
@@ -441,7 +523,8 @@ async def help_command(interaction: discord.Interaction):
         '전체 심기는 빈 밭 수만큼 씨앗이 있어야 해요. 한 줄씩 최대 25칸까지 확장해요.\n'
         '농장은 모든 서버에서 공유해요. 기록은 판매해도 유지돼요.\n'
         '새 피해 확률 5%, 판매가 10% 감소. 크기 기록은 그대로예요. 허수아비는 영구적이에요.\n'
-        '농장은 채널에 표시되고 성장 완료 시 자동 갱신돼요. 농장 버튼은 2시간, 상점 버튼은 3분 동안 사용할 수 있어요.\n'
+        '공개 농장은 구경용이에요. 내 농장 열기를 누르면 본인에게만 조작 화면이 떠요.\n'
+        '개인 농장은 14분간, 상점은 3분간 사용할 수 있어요. 만료되면 내 농장 열기를 다시 눌러 주세요.\n'
         '봇 재시작 후에는 /농장을 다시 열어 주세요.', ephemeral=True)
 
 

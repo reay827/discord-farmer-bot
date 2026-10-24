@@ -6,9 +6,9 @@
   "attendance_bonus_gold": 100,
   "expansion_prices": [
     100,
-    400,
-    1000,
-    2500
+    2000,
+    12000,
+    60000
   ],
   "scarecrow_price": 300,
   "fertilizer_price": 5,

@@ -351,11 +351,13 @@ class Bot(discord.Client):
         self.tree = app_commands.CommandTree(self)
 
     async def setup_hook(self):
-        guild_id = os.getenv('TEST_GUILD_ID')
-        if guild_id:
-            guild = discord.Object(id=int(guild_id))
-            self.tree.copy_global_to(guild=guild)
-            await self.tree.sync(guild=guild)
+        guild_ids = os.getenv('TEST_GUILD_ID', '')
+        if guild_ids.strip():
+            for guild_id in dict.fromkeys(g.strip() for g in guild_ids.split(',') if g.strip()):
+                guild = discord.Object(id=int(guild_id))
+                self.tree.copy_global_to(guild=guild)
+                commands = await self.tree.sync(guild=guild)
+                logging.info('Guild %s: %s commands registered', guild_id, len(commands))
         else:
             await self.tree.sync()
 

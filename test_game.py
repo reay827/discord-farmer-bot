@@ -79,6 +79,32 @@ class GameTests(unittest.TestCase):
         self.assertIsNotNone(self.s['plots'][3])
         self.assertEqual(self.s['seeds']['carrot'], 4)
 
+    def test_row_planting_locks_and_purchase_unlock(self):
+        before = self.game.read(1)
+        with self.assertRaises(GameError):
+            self.act('plant', crop='carrot', row=1)
+        self.assertEqual(self.game.read(1), before)
+        self.act('plant', crop='carrot', row=0)
+        self.assertTrue(all(self.s['plots'][i] for i in range(5)))
+        self.assertTrue(all(p is None for p in self.s['plots'][5:]))
+        self.assertEqual(self.s['seeds']['carrot'], 0)
+        self.now += 30
+        self.act('harvest')
+        self.act('sell')
+        self.act('expand')
+        self.act('buy', crop='carrot', quantity=5)
+        self.act('plant', crop='carrot', row=1)
+        self.assertTrue(all(self.s['plots'][i] for i in range(5,10)))
+        self.assertTrue(all(p is None for p in self.s['plots'][:5]))
+
+    def test_row_only_fills_empty_cells(self):
+        self.act('plant', crop='carrot', plot=2)
+        original = self.s['plots'][2].copy()
+        self.act('plant', crop='carrot', row=0)
+        self.assertEqual(self.s['plots'][2], original)
+        self.assertEqual(self.s['seeds']['carrot'], 0)
+        self.assertTrue(all(self.s['plots'][i] for i in range(5)))
+
     def test_all_growth_times_and_crop_sale(self):
         self.act('buy', crop='tomato')
         self.act('buy', crop='pumpkin')

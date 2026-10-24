@@ -1,7 +1,7 @@
 import asyncio
 import time
 import unittest
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, PropertyMock, patch
 from types import SimpleNamespace
 
 import bot
@@ -68,3 +68,21 @@ class AutoGrowthTests(unittest.IsolatedAsyncioTestCase):
         updated = interaction.response.edit_message.call_args.kwargs['view']
         self.assertEqual(updated.crop, 'tomato')
         updated.stop()
+
+    async def test_five_rows_visible_with_locks_and_unlock(self):
+        state = self.state(1800)
+        view = bot.FarmView(1, state)
+        self.assertEqual(len(view.plot_menu.options), 6)
+        self.assertEqual(view.row, 0)
+        self.assertEqual(sum(str(o.emoji) == '🔒' for o in view.plot_menu.options), 4)
+        interaction = SimpleNamespace(response=SimpleNamespace(send_message=AsyncMock(), edit_message=AsyncMock()))
+        with patch.object(type(view.plot_menu), 'values', new_callable=PropertyMock, return_value=['1']):
+            await view.plot_menu.callback(interaction)
+        interaction.response.send_message.assert_awaited_once()
+        self.assertEqual(view.row, 0)
+        state['rows'] = 2
+        unlocked = bot.FarmView(1, state)
+        self.assertEqual(str(unlocked.plot_menu.options[2].emoji), '🟫')
+        self.assertNotIn('잠김', unlocked.plot_menu.options[2].label)
+        view.stop()
+        unlocked.stop()

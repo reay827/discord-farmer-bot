@@ -94,7 +94,7 @@ class Game:
             db.execute('INSERT INTO operations VALUES(?,?)', (str(operation), self.clock()))
             return s, message
 
-    def _apply(self, s, action, crop=None, quantity=1, plot=None):
+    def _apply(self, s, action, crop=None, quantity=1, plot=None, row=None):
         if crop is not None and crop not in CROPS:
             raise GameError('알 수 없는 작물이에요.')
         if action == 'buy':
@@ -123,6 +123,10 @@ class Game:
             if plot is not None and (type(plot) is not int or not 0 <= plot < s['rows']*5):
                 raise GameError('열린 밭을 선택해 주세요.')
             targets = [plot] if plot is not None else list(range(s['rows']*5))
+            if row is not None:
+                if type(row) is not int or not 0 <= row < s['rows']:
+                    raise GameError('🔒 잠긴 밭이에요. 다음 줄 확장으로 먼저 열어 주세요.')
+                targets = list(range(row*5, row*5+5))
             targets = [i for i in targets if s['plots'][i] is None]
             if not targets:
                 raise GameError('빈 밭이 없어요.')

@@ -25,12 +25,12 @@ def farm_embed(s, notice=''):
             p = s['plots'][row*5+col]
             cells.append('🔒' if row >= s['rows'] else '🟫' if p is None else
                          CROPS[p['crop']]['emoji'] if p['ready'] <= time.time() else '🌱')
-        grid.append(' '.join(cells))
+        grid.append(f'{row+1}번 밭  ' + ' '.join(cells))
     embed = discord.Embed(title='🌿 나의 작은 농장', description=notice+'\n\n'+'\n'.join(grid), color=0x78AD70)
     embed.add_field(name='지갑', value=f"{s['gold']:,}골드")
     embed.add_field(name='누적 판매', value=f"{s['revenue']:,}골드")
     embed.add_field(name='밭 / 허수아비', value=f"{s['rows']*5}/25칸 · {'설치됨' if s['scarecrow'] else '없음'}")
-    growing = [f"{i+1}번 {CROPS[p['crop']]['name']} · <t:{int(p['ready'])}:R>" for i,p in enumerate(s['plots']) if p and p['ready'] > time.time()]
+    growing = [f"{i//5+1}번 밭·{i%5+1}칸 {CROPS[p['crop']]['name']} · <t:{int(p['ready'])}:R>" for i,p in enumerate(s['plots']) if p and p['ready'] > time.time()]
     if growing:
         embed.add_field(name='성장 완료 예정', value='\n'.join(growing), inline=False)
     embed.set_footer(text='🟫 빈 밭 · 🌱 성장 중 · 작물 그림은 수확 가능 | 성장이 끝나면 자동으로 바뀝니다.')
@@ -44,12 +44,15 @@ class FarmView(discord.ui.View):
         self._edit_lock = asyncio.Lock()
         self._deadlines = sorted({p['ready'] for p in state['plots'] if p and p['ready'] > time.time()})
         self.user, self.version = user, state['version']
-        self.crop, self.plot = 'carrot', None
+        self.crop, self.row = 'carrot', 0
+        self.open_rows = state['rows']
         self.crop_menu.options = [discord.SelectOption(label=f"{c['name']} · 씨앗 {state['seeds'][k]}개", value=k, emoji=c['emoji'], default=k=='carrot') for k,c in CROPS.items()]
-        self.plot_menu.options = [discord.SelectOption(label=f'{i+1}번 밭', value=str(i)) for i in range(state['rows']*5) if state['plots'][i] is None]
-        if not self.plot_menu.options:
-            self.plot_menu.options = [discord.SelectOption(label='빈 밭이 없어요', value='none')]
-            self.plot_menu.disabled = True
+        self.plot_menu.options = [discord.SelectOption(label='열린 밭 전체', value='all', emoji='🌾', description='열린 모든 줄의 빈 칸에 심기')]
+        for i in range(5):
+            opened = i < state['rows']
+            empty = sum(p is None for p in state['plots'][i*5:i*5+5])
+            description = f'가로 한 줄 5칸 · 빈 칸 {empty}개' if opened else '잠김 · 위에서부터 줄 확장 구매로 개방'
+            self.plot_menu.options.append(discord.SelectOption(label=f"{i+1}번 밭{' · 잠김' if not opened else ''}", value=str(i), emoji='🟫' if opened else '🔒', description=description, default=i==0))
         self.expand.label = '최대 확장 완료' if state['rows'] == 5 else f"다음 줄 확장 · {CONFIG['expansion_prices'][state['rows']-1]}골드"
         self.expand.disabled = state['rows'] == 5
 
@@ -115,16 +118,20 @@ class FarmView(discord.ui.View):
             option.default = option.value == self.crop
         await interaction.response.edit_message(view=self)
 
-    @discord.ui.select(placeholder='기본: 빈 밭 전체 · 개별 칸 선택 가능', row=1)
+    @discord.ui.select(placeholder='심을 밭 선택 · 한 밭은 가로 한 줄 5칸', row=1)
     async def plot_menu(self, interaction, select):
-        self.plot = int(select.values[0])
+        row = None if select.values[0] == 'all' else int(select.values[0])
+        if row is not None and row >= self.open_rows:
+            await interaction.response.send_message(f'🔒 {row+1}번 밭은 아직 잠겨 있어요. 다음 줄 확장 버튼으로 순서대로 구매해 주세요.', ephemeral=True)
+            return
+        self.row = row
         for option in select.options:
             option.default = option.value == select.values[0]
         await interaction.response.edit_message(view=self)
 
     @discord.ui.button(label='선택한 밭에 심기', style=discord.ButtonStyle.green, row=2)
     async def plant(self, interaction, button):
-        await self.action(interaction, 'plant', crop=self.crop, plot=self.plot)
+        await self.action(interaction, 'plant', crop=self.crop, row=self.row)
 
     @discord.ui.button(label='다 자란 작물 모두 수확', style=discord.ButtonStyle.green, row=2)
     async def harvest(self, interaction, button):
@@ -145,9 +152,9 @@ class FarmView(discord.ui.View):
 
     @discord.ui.button(label='빈 밭 전체 선택', row=3)
     async def select_all(self, interaction, button):
-        self.plot = None
+        self.row = None
         for option in self.plot_menu.options:
-            option.default = False
+            option.default = option.value == 'all'
         await interaction.response.edit_message(view=self)
 
 
@@ -304,6 +311,8 @@ async def ranking(interaction: discord.Interaction, scope: str = 'server', crop:
 async def help_command(interaction: discord.Interaction):
     visit(interaction)
     await interaction.response.send_message('🌱 /농장 → 작물과 빈 밭 선택 → 심기 → 성장 후 새로고침 → 모두 수확 → 판매\n'
+        '1번 밭은 첫 가로줄 5칸이에요. 2~5번 밭은 줄 확장 구매 후 열려요.\n'
+        '밭을 선택하면 해당 줄의 빈 칸에만 심어요. 열린 밭 전체도 선택할 수 있어요.\n'
         '/상점: 씨앗·허수아비 구매 · /가방: 씨앗·수확물·최고 기록\n'
         '/판매: 작물별 또는 전체 판매 · /순위: 범위 선택, crop 생략 시 누적 판매 수익\n'
         '당근 30초 · 토마토 5분 · 호박 30분. 작물은 시들지 않아요.\n'

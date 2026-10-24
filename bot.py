@@ -2,13 +2,14 @@ import asyncio
 import logging
 import os
 import time
+from datetime import datetime
 from pathlib import Path
 
 import discord
 from discord import app_commands
 from dotenv import load_dotenv
 
-from game import CONFIG, CROPS, Game, GameError, grade, attendance_status
+from game import CONFIG, CROPS, Game, GameError, grade, attendance_status, growth_seconds, KST
 
 ROOT = Path(__file__).resolve().parent
 load_dotenv(ROOT / '.env')
@@ -58,11 +59,12 @@ def farm_embed(s, notice='', public_name=None):
             if p and p['ready'] > now:
                 # 한 번의 심기에서 생긴 미세한 시각 차이는 같은 완료 시각으로 표시합니다.
                 key = (p['crop'], int(p['ready']))
-                groups[key] = True
-        for crop, ready in groups:
-            growing.append(f"{('1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣')[row]} {CROPS[crop]['name']} · <t:{ready}:R>")
+                groups[key] = p.get('growth_seconds', growth_seconds(p['crop'], p.get('fertilized', False)))
+        for (crop, ready), seconds in groups.items():
+            finish = datetime.fromtimestamp(ready, KST).strftime('%H:%M:%S')
+            growing.append(f"{('1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣')[row]} {CROPS[crop]['name']} · 성장 {duration_text(seconds)} · {finish} 완료")
     if growing:
-        embed.add_field(name='성장 완료 예정', value='\n'.join(growing), inline=False)
+        embed.add_field(name='성장 완료 예정 · 한국 시간', value='\n'.join(growing), inline=False)
     embed.set_footer(text='🟫 빈 밭 · 🌱 성장 중 · 작물 그림은 수확 가능 | ' +
                      ('성장 완료 시 자동 갱신 · 버튼으로 각자의 농장을 열어 보세요.' if public_name is not None else
                       '개인 화면은 마지막 조작 후 14분간 유효 · 만료되면 내 농장 열기를 다시 누르세요.'))

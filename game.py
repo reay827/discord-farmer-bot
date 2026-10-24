@@ -229,6 +229,7 @@ class Game:
                 fertilized = i//5 in fertilized_rows
                 ready = now + growth_seconds(crop, fertilized)
                 s['plots'][i] = dict(crop=crop, ready=ready,
+                                     planted_at=now, growth_seconds=growth_seconds(crop, fertilized),
                                      fertilized=fertilized,
                                      bird=(not s['scarecrow'] and self.rng.random() < CONFIG['bird_probability']))
             for r in fertilized_rows:

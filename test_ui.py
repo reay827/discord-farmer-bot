@@ -25,8 +25,17 @@ class AutoGrowthTests(unittest.IsolatedAsyncioTestCase):
         embed = message.edit.call_args.kwargs['embed']
         self.assertIn('🥕', embed.description)
         self.assertNotIn('🌱', embed.description)
-        self.assertFalse(any(f.name == '성장 완료 예정' for f in embed.fields))
+        self.assertFalse(any(f.name.startswith('성장 완료 예정') for f in embed.fields))
         view.stop()
+
+    async def test_growth_label_is_fixed_duration_not_client_countdown(self):
+        state = self.state(30)
+        state['plots'][0]['growth_seconds'] = 30
+        field = next(f for f in bot.farm_embed(state).fields if f.name.startswith('성장 완료 예정'))
+        self.assertIn('성장 30초', field.value)
+        self.assertIn('한국 시간', field.name)
+        self.assertNotIn('<t:', field.value)
+        self.assertIn('완료', field.value)
 
     async def test_replaced_view_cancels_timer(self):
         view = bot.FarmView(1, self.state(1800))

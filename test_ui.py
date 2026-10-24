@@ -205,6 +205,8 @@ class AutoGrowthTests(unittest.IsolatedAsyncioTestCase):
         value=next(f.value for f in embed.fields if f.name.startswith('✨ 품질 비료'))
         self.assertIn('1번 밭 · 품질 비료 사용 중 (2개 남음)',value)
         self.assertIn('✨',embed.description)
+        row=next(line for line in embed.description.splitlines() if line.startswith('1️⃣'))
+        self.assertIn('품질 비료 사용 중 (2개 남음)',row)
 
     async def test_public_button_opens_clickers_own_private_farm(self):
         state = self.state(1800)

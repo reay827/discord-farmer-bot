@@ -56,9 +56,9 @@ def farm_embed(s, notice='', public_name=None):
             p = s['plots'][row*5+col]
             cells.append('🔒' if row >= s['rows'] else '🟫' if p is None else
                          CROPS[p['crop']]['emoji'] if p['ready'] <= time.time() else '🌱')
-        fertilizer_marker = '　🌿' if s.get('fertilizer_rows', [False]*5)[row] else ''
+        fertilizer_marker = f"　🌿 성장 비료 사용 중 ({s.get('fertilizer',0)}개 남음)" if s.get('fertilizer_rows', [False]*5)[row] else ''
         if s.get('quality_fertilizer_rows', [False]*5)[row]:
-            fertilizer_marker = '　✨'
+            fertilizer_marker = f"　✨ 품질 비료 사용 중 ({s.get('quality_fertilizer',0)}개 남음)"
         grid.append(('1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣')[row] + '　' + ' '.join(cells) + fertilizer_marker)
     title = f'🌿 {public_name}님의 농장' if public_name is not None else '🌿 나의 작은 농장'
     embed = discord.Embed(title=title, description=notice+'\n\n'+'\n'.join(grid), color=0x78AD70)

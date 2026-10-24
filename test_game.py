@@ -35,6 +35,48 @@ class GameTests(unittest.TestCase):
         while self.s['rows'] < rows:
             self.act('expand')
 
+    def test_quality_fertilizer_profit_weight_and_time(self):
+        class BaseWeights:
+            def random(self): return .5
+            def uniform(self, a, b): return 1
+        self.game.rng = BaseWeights()
+        self.act('buy_quality_fertilizer')
+        self.assertEqual(self.s['gold'], 80)
+        self.act('buy', crop='pumpkin', quantity=5)
+        self.act('reserve_fertilizer', row=0, fertilizer_kind='quality')
+        self.assertEqual(self.s['quality_fertilizer'], 1)
+        with self.assertRaises(GameError):
+            self.act('reserve_fertilizer', row=0)
+        self.act('plant', crop='pumpkin', row=0)
+        self.assertEqual(self.s['quality_fertilizer'], 0)
+        self.assertFalse(self.s['quality_fertilizer_rows'][0])
+        self.assertTrue(all(p['ready'] == self.now+300 and not p['fertilized'] for p in self.s['plots'][:5]))
+        self.game = Game(self.path, clock=lambda: self.now, rng=BaseWeights())
+        self.now += 300
+        self.act('harvest')
+        self.assertEqual(sum(x['value'] for x in self.s['bag']), 330)
+        self.assertEqual(self.s['records']['pumpkin'], 2000)
+        self.assertEqual(330-5*CROPS['pumpkin']['base_sale']-20, 10)
+        self.act('sell')
+        self.assertEqual(self.s['revenue'], 330)
+
+    def test_quality_reservation_cancel_failure_and_exclusion(self):
+        self.act('buy_quality_fertilizer')
+        self.act('buy_fertilizer')
+        self.act('reserve_fertilizer', row=0)
+        with self.assertRaises(GameError):
+            self.act('reserve_fertilizer', row=0, fertilizer_kind='quality')
+        self.act('cancel_fertilizer', row=0)
+        self.act('reserve_fertilizer', row=0, fertilizer_kind='quality')
+        before = self.game.read(1)
+        with self.assertRaises(GameError):
+            self.act('plant', crop='pumpkin', row=0)
+        self.assertEqual(self.game.read(1), before)
+        self.act('cancel_fertilizer', row=0)
+        self.assertEqual(self.s['quality_fertilizer'], 1)
+        self.assertEqual(self.s['fertilizer'], 1)
+        self.assertFalse(any(self.s['quality_fertilizer_rows']))
+
     def test_existing_seed_packs_round_up_only_once(self):
         self.unlock_to(3)
         self.act('buy', crop='strawberry', quantity=3)

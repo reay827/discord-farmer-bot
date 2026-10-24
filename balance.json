@@ -12,6 +12,8 @@
   ],
   "scarecrow_price": 300,
   "fertilizer_price": 5,
+  "quality_fertilizer_price": 20,
+  "quality_fertilizer_sale_multiplier": 1.1,
   "fertilizer_growth_multiplier": 0.8,
   "bird_probability": 0.05,
   "bird_value_multiplier": 0.9,

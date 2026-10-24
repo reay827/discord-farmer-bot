@@ -173,6 +173,24 @@ class AutoGrowthTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(fertilizer.is_finished())
         farm.stop()
 
+    async def test_quality_fertilizer_shop_and_kind_selection(self):
+        state = self.state(1800)
+        shop = bot.ShopView(1, state, 'quality_fertilizer')
+        self.assertIn('20G', shop.embed().fields[1].value)
+        interaction = SimpleNamespace(id=456, response=SimpleNamespace(edit_message=AsyncMock(), send_message=AsyncMock()),
+            original_response=AsyncMock(return_value=AsyncMock()))
+        with patch.object(bot.game,'act',return_value=(state,'구매 완료')) as act:
+            purchase = next(b for b in shop.children if isinstance(b,bot.discord.ui.Button) and b.label.startswith('1개 구매'))
+            await purchase.callback(interaction)
+            act.assert_called_once_with(1,0,456,'buy_quality_fertilizer',quantity=1)
+        interaction.response.edit_message.call_args.kwargs['view'].stop()
+        fertilizer = bot.FertilizerView(1,state)
+        with patch.object(type(fertilizer.kind_menu),'values',new_callable=PropertyMock,return_value=['quality']):
+            await fertilizer.kind_menu.callback(interaction)
+        self.assertIn('품질 비료',fertilizer.embed().title)
+        self.assertIn('10%',fertilizer.embed().description)
+        fertilizer.stop()
+
     async def test_public_button_opens_clickers_own_private_farm(self):
         state = self.state(1800)
         panel = bot.PublicFarmView(owner=1, name='구경할 농부')

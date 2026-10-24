@@ -38,6 +38,8 @@ def prepare_state(state):
     # 기존 농장의 재화와 작물은 유지하고 새 필드만 기본값으로 보완합니다.
     state.setdefault('fertilizer', 0)
     state.setdefault('fertilizer_rows', [False]*5)
+    state.setdefault('quality_fertilizer', 0)
+    state.setdefault('quality_fertilizer_rows', [False]*5)
     state.setdefault('attendance_last_date', None)
     state.setdefault('attendance_streak', 0)
     for crop in CROPS:
@@ -145,7 +147,7 @@ class Game:
             db.execute('INSERT INTO operations VALUES(?,?)', (str(operation), self.clock()))
             return s, message
 
-    def _apply(self, s, action, crop=None, quantity=1, plot=None, row=None):
+    def _apply(self, s, action, crop=None, quantity=1, plot=None, row=None, fertilizer_kind='growth'):
         if crop is not None and crop not in CROPS:
             raise GameError('알 수 없는 작물이에요.')
         if action == 'checkin':
@@ -162,28 +164,37 @@ class Game:
                 lines.append(f"🎁 연속 {CONFIG['attendance_bonus_days']}일 달성 보너스! +{bonus}골드")
             lines.append(f"💰 현재 {s['gold']:,}골드 · 다음 출석은 한국 시간 내일 0시부터")
             return '\n'.join(lines)
-        if action == 'buy_fertilizer':
+        if action in ('buy_fertilizer', 'buy_quality_fertilizer'):
             if type(quantity) is not int or not 1 <= quantity <= 999:
                 raise GameError('비료는 1~999개까지 구매할 수 있어요.')
-            price = CONFIG['fertilizer_price'] * quantity
+            quality = action == 'buy_quality_fertilizer'
+            inventory = 'quality_fertilizer' if quality else 'fertilizer'
+            price = CONFIG[inventory+'_price'] * quantity
             self.pay(s, price)
-            s['fertilizer'] += quantity
-            return f'🌿 성장 비료 {quantity}개 구매 · {price}골드'
+            s[inventory] += quantity
+            return f"{'✨ 품질' if quality else '🌿 성장'} 비료 {quantity}개 구매 · {price}골드"
         if action in ('reserve_fertilizer', 'cancel_fertilizer'):
             if type(row) is not int or not 0 <= row < s['rows']:
                 raise GameError('🔒 열린 밭 한 줄을 선택해 주세요.')
             if action == 'cancel_fertilizer':
-                if not s['fertilizer_rows'][row]:
+                if not (s['fertilizer_rows'][row] or s['quality_fertilizer_rows'][row]):
                     raise GameError('이 밭에는 예약한 비료가 없어요.')
                 s['fertilizer_rows'][row] = False
+                s['quality_fertilizer_rows'][row] = False
                 return f'🌿 {row+1}번 밭 비료 예약을 취소했어요. 비료는 소모되지 않았어요.'
-            if s['fertilizer_rows'][row]:
+            if s['fertilizer_rows'][row] or s['quality_fertilizer_rows'][row]:
                 raise GameError('이미 비료가 예약된 밭이에요. 중복 적용할 수 없어요.')
             if any(p is not None for p in s['plots'][row*5:row*5+5]):
                 raise GameError('작물이 없는 빈 밭 한 줄에만 비료를 예약할 수 있어요.')
-            if s['fertilizer'] <= sum(s['fertilizer_rows']):
+            if fertilizer_kind not in ('growth', 'quality'):
+                raise GameError('비료 종류를 선택해 주세요.')
+            inventory = 'quality_fertilizer' if fertilizer_kind == 'quality' else 'fertilizer'
+            reservations = inventory+'_rows'
+            if s[inventory] <= sum(s[reservations]):
                 raise GameError('사용 가능한 비료가 없어요. 상점에서 구매해 주세요.')
-            s['fertilizer_rows'][row] = True
+            s[reservations][row] = True
+            if fertilizer_kind == 'quality':
+                return f'✨ {row+1}번 밭 · 다음 심기 작물 판매가 10% 증가! 심기에 성공하면 품질 비료 1개가 소모돼요.'
             return f'🌿 {row+1}번 밭 · 다음 심기 성장 시간 20% 감소! 심기에 성공하면 비료 1개가 소모돼요.'
         if action == 'buy':
             if crop is None or type(quantity) is not int or not 1 <= quantity <= 999:
@@ -228,21 +239,30 @@ class Game:
             s['seeds'][crop] -= len(targets)
             now = self.clock()
             fertilized_rows = {i//5 for i in targets if s['fertilizer_rows'][i//5]}
+            quality_rows = {i//5 for i in targets if s['quality_fertilizer_rows'][i//5]}
             if s['fertilizer'] < len(fertilized_rows):
                 raise GameError('예약된 비료가 부족해요. 비료 예약을 다시 확인해 주세요.')
+            if s['quality_fertilizer'] < len(quality_rows) or quality_rows & fertilized_rows:
+                raise GameError('비료 예약 상태를 확인해 주세요. 한 밭에 한 종류만 사용할 수 있어요.')
             for i in targets:
                 fertilized = i//5 in fertilized_rows
                 ready = now + growth_seconds(crop, fertilized)
                 s['plots'][i] = dict(crop=crop, ready=ready,
                                      planted_at=now, growth_seconds=growth_seconds(crop, fertilized),
                                      fertilized=fertilized,
+                                     sale_multiplier=CONFIG['quality_fertilizer_sale_multiplier'] if i//5 in quality_rows else 1,
                                      bird=(not s['scarecrow'] and self.rng.random() < CONFIG['bird_probability']))
             for r in fertilized_rows:
                 s['fertilizer_rows'][r] = False
             s['fertilizer'] -= len(fertilized_rows)
+            for r in quality_rows:
+                s['quality_fertilizer_rows'][r] = False
+            s['quality_fertilizer'] -= len(quality_rows)
             message = f"{CROPS[crop]['name']} {len(targets)}칸에 심었어요."
             if fertilized_rows:
                 message += f'\n🌿 비료 {len(fertilized_rows)}개 사용 · 해당 밭 성장 시간 20% 감소'
+            if quality_rows:
+                message += f'\n✨ 품질 비료 {len(quality_rows)}개 사용 · 해당 밭 작물 판매가 10% 증가'
             return message
         if action == 'harvest':
             count = 0
@@ -257,7 +277,7 @@ class Game:
                 lo, hi = (0.7, 1.3) if roll < .9 else (1.3, 2) if roll < .99 else (2, 3)
                 weight = round(c['base_weight'] * self.rng.uniform(lo, hi))
                 value = max(1, round(c['base_sale'] * weight / c['base_weight'] *
-                                     (CONFIG['bird_value_multiplier'] if p['bird'] else 1)))
+                                     (CONFIG['bird_value_multiplier'] if p['bird'] else 1) * p.get('sale_multiplier', 1)))
                 s['bag'].append(dict(crop=p['crop'], weight=weight, value=value, bird=p['bird']))
                 s['records'][p['crop']] = max(s['records'].get(p['crop'], 0), weight)
                 harvested[p['crop']] = harvested.get(p['crop'], 0) + 1

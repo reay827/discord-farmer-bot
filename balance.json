@@ -3,6 +3,8 @@
   "starting_seeds": 5,
   "expansion_prices": [100, 400, 1000, 2500],
   "scarecrow_price": 300,
+  "fertilizer_price": 5,
+  "fertilizer_growth_multiplier": 0.8,
   "bird_probability": 0.05,
   "bird_value_multiplier": 0.9,
   "crops": {

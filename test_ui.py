@@ -127,3 +127,25 @@ class AutoGrowthTests(unittest.IsolatedAsyncioTestCase):
         old.edit.assert_awaited_once_with(view=None)
         returned = interaction.response.send_message.call_args.kwargs['view']
         returned.stop()
+
+    async def test_fertilizer_shop_and_reservation_return_to_farm(self):
+        state = self.state(1800)
+        state['fertilizer'] = 2
+        state['fertilizer_rows'] = [False]*5
+        shop = bot.ShopView(1, state, 'fertilizer')
+        self.assertIn('성장 비료', shop.embed().fields[1].name)
+        interaction = SimpleNamespace(id=456, response=SimpleNamespace(edit_message=AsyncMock(), send_message=AsyncMock()),
+            message=SimpleNamespace(id=789), channel=SimpleNamespace(get_partial_message=lambda mid: AsyncMock()))
+        with patch.object(bot.game, 'act', return_value=(state, '구매 완료')) as act:
+            purchase = next(b for b in shop.children if isinstance(b, bot.discord.ui.Button) and b.label.startswith('1개 구매'))
+            await purchase.callback(interaction)
+            act.assert_called_once_with(1, 0, 456, 'buy_fertilizer', quantity=1)
+        interaction.response.edit_message.call_args.kwargs['view'].stop()
+        fertilizer = bot.FertilizerView(1, state)
+        with patch.object(bot.game, 'act', return_value=(state, '예약 완료')) as act:
+            await fertilizer.reserve.callback(interaction)
+            act.assert_called_once_with(1, 0, 456, 'reserve_fertilizer', row=0)
+        farm = interaction.response.edit_message.call_args.kwargs['view']
+        self.assertIsInstance(farm, bot.FarmView)
+        self.assertTrue(fertilizer.is_finished())
+        farm.stop()

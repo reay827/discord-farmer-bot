@@ -19,6 +19,17 @@ def grade(weight, base):
     return '전설' if ratio >= 2 else '희귀' if ratio >= 1.5 else '큼' if ratio >= 1.1 else '보통'
 
 
+def growth_seconds(crop, fertilized=False):
+    return CROPS[crop]['seconds'] * (CONFIG['fertilizer_growth_multiplier'] if fertilized else 1)
+
+
+def prepare_state(state):
+    # 기존 농장의 재화와 작물은 유지하고 새 필드만 기본값으로 보완합니다.
+    state.setdefault('fertilizer', 0)
+    state.setdefault('fertilizer_rows', [False]*5)
+    return state
+
+
 class Game:
     def __init__(self, path='data/farm.db', clock=time.time, rng=None):
         Path(path).parent.mkdir(parents=True, exist_ok=True)
@@ -65,6 +76,7 @@ class Game:
                 gold=CONFIG['starting_gold'], rows=1, scarecrow=False,
                 seeds={k: CONFIG['starting_seeds'] if k == 'carrot' else 0 for k in CROPS},
                 plots=[None]*25, bag=[], records={}, revenue=0, version=0)
+            prepare_state(state)
             db.execute('INSERT INTO players VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET name=excluded.name',
                        (str(user), name, json.dumps(state)))
             if guild is not None:
@@ -76,14 +88,14 @@ class Game:
             row = db.execute('SELECT state FROM players WHERE id=?', (str(user),)).fetchone()
         if not row:
             raise GameError('먼저 /농장으로 시작해 주세요.')
-        return json.loads(row[0])
+        return prepare_state(json.loads(row[0]))
 
     def act(self, user, version, operation, action, **args):
         with self.transaction() as db:
             row = db.execute('SELECT state FROM players WHERE id=?', (str(user),)).fetchone()
             if not row:
                 raise GameError('먼저 /농장으로 시작해 주세요.')
-            s = json.loads(row[0])
+            s = prepare_state(json.loads(row[0]))
             if db.execute('SELECT 1 FROM operations WHERE id=?', (str(operation),)).fetchone():
                 raise GameError('이미 처리된 요청이에요. /농장에서 확인해 주세요.')
             if s['version'] != version:
@@ -97,6 +109,29 @@ class Game:
     def _apply(self, s, action, crop=None, quantity=1, plot=None, row=None):
         if crop is not None and crop not in CROPS:
             raise GameError('알 수 없는 작물이에요.')
+        if action == 'buy_fertilizer':
+            if type(quantity) is not int or not 1 <= quantity <= 999:
+                raise GameError('비료는 1~999개까지 구매할 수 있어요.')
+            price = CONFIG['fertilizer_price'] * quantity
+            self.pay(s, price)
+            s['fertilizer'] += quantity
+            return f'🌿 성장 비료 {quantity}개 구매 · {price}골드'
+        if action in ('reserve_fertilizer', 'cancel_fertilizer'):
+            if type(row) is not int or not 0 <= row < s['rows']:
+                raise GameError('🔒 열린 밭 한 줄을 선택해 주세요.')
+            if action == 'cancel_fertilizer':
+                if not s['fertilizer_rows'][row]:
+                    raise GameError('이 밭에는 예약한 비료가 없어요.')
+                s['fertilizer_rows'][row] = False
+                return f'🌿 {row+1}번 밭 비료 예약을 취소했어요. 비료는 소모되지 않았어요.'
+            if s['fertilizer_rows'][row]:
+                raise GameError('이미 비료가 예약된 밭이에요. 중복 적용할 수 없어요.')
+            if any(p is not None for p in s['plots'][row*5:row*5+5]):
+                raise GameError('작물이 없는 빈 밭 한 줄에만 비료를 예약할 수 있어요.')
+            if s['fertilizer'] <= sum(s['fertilizer_rows']):
+                raise GameError('사용 가능한 비료가 없어요. 상점에서 구매해 주세요.')
+            s['fertilizer_rows'][row] = True
+            return f'🌿 {row+1}번 밭 · 다음 심기 성장 시간 20% 감소! 심기에 성공하면 비료 1개가 소모돼요.'
         if action == 'buy':
             if crop is None or type(quantity) is not int or not 1 <= quantity <= 999:
                 raise GameError('씨앗은 1~999개까지 구매할 수 있어요.')
@@ -133,11 +168,23 @@ class Game:
             if s['seeds'][crop] < len(targets):
                 raise GameError(f"씨앗 {len(targets)}개가 필요해요. 현재 {s['seeds'][crop]}개예요.")
             s['seeds'][crop] -= len(targets)
-            ready = self.clock() + CROPS[crop]['seconds']
+            now = self.clock()
+            fertilized_rows = {i//5 for i in targets if s['fertilizer_rows'][i//5]}
+            if s['fertilizer'] < len(fertilized_rows):
+                raise GameError('예약된 비료가 부족해요. 비료 예약을 다시 확인해 주세요.')
             for i in targets:
+                fertilized = i//5 in fertilized_rows
+                ready = now + growth_seconds(crop, fertilized)
                 s['plots'][i] = dict(crop=crop, ready=ready,
+                                     fertilized=fertilized,
                                      bird=(not s['scarecrow'] and self.rng.random() < CONFIG['bird_probability']))
-            return f"{CROPS[crop]['name']} {len(targets)}칸에 심었어요."
+            for r in fertilized_rows:
+                s['fertilizer_rows'][r] = False
+            s['fertilizer'] -= len(fertilized_rows)
+            message = f"{CROPS[crop]['name']} {len(targets)}칸에 심었어요."
+            if fertilized_rows:
+                message += f'\n🌿 비료 {len(fertilized_rows)}개 사용 · 해당 밭 성장 시간 20% 감소'
+            return message
         if action == 'harvest':
             count = 0
             previous_records = s['records'].copy()

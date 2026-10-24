@@ -30,6 +30,8 @@ def farm_embed(s, notice=''):
     embed.add_field(name='지갑', value=f"{s['gold']:,}골드")
     embed.add_field(name='누적 판매', value=f"{s['revenue']:,}골드")
     embed.add_field(name='밭 / 허수아비', value=f"{s['rows']*5}/25칸 · {'설치됨' if s['scarecrow'] else '없음'}")
+    reserved = [f"{('1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣')[i]} 다음 심기 성장 시간 20% 감소" for i, active in enumerate(s.get('fertilizer_rows', [])) if active]
+    embed.add_field(name=f"🌿 성장 비료 · 보유 {s.get('fertilizer', 0)}개", value='\n'.join(reserved) or '비료 사용 버튼에서 빈 밭에 예약할 수 있어요.', inline=False)
     growing = []
     now = time.time()
     for row in range(5):
@@ -174,6 +176,79 @@ class FarmView(discord.ui.View):
             await interaction.response.edit_message(content=None, embed=view.embed(), view=view)
             self.stop()
 
+    @discord.ui.button(label='비료 사용', emoji='🌿', row=4)
+    async def go_fertilizer(self, interaction, button):
+        view = FertilizerView(self.user, game.read(self.user))
+        async with self._edit_lock:
+            await interaction.response.edit_message(embed=view.embed(), view=view)
+            self.stop()
+
+
+class FertilizerView(discord.ui.View):
+    def __init__(self, user, state):
+        super().__init__(timeout=180)
+        self.user, self.version, self.state, self.row = user, state['version'], state, 0
+        self.row_menu.options = []
+        for i in range(5):
+            locked = i >= state['rows']
+            reserved = state.get('fertilizer_rows', [False]*5)[i]
+            occupied = any(p for p in state['plots'][i*5:i*5+5])
+            status = '잠김' if locked else '비료 예약됨' if reserved else '작물 있음' if occupied else '빈 밭 · 예약 가능'
+            self.row_menu.options.append(discord.SelectOption(label=f'{i+1}번 밭 · {status}', value=str(i), emoji='🔒' if locked else '🌿' if reserved else '🟫', default=i==0))
+
+    def embed(self):
+        reserved = sum(self.state.get('fertilizer_rows', []))
+        return discord.Embed(title='🌿 성장 비료 사용', description=
+            f"보유 **{self.state.get('fertilizer', 0)}개** · 예약 **{reserved}개**\n\n"
+            f'선택한 밭: **{self.row+1}번 밭 (가로 한 줄 5칸)**\n'
+            '효과: 다음 심기 성장 시간 **20% 감소**\n'
+            '당근 30초 → 24초 · 토마토 5분 → 4분 · 호박 30분 → 24분\n\n'
+            '빈 밭에만 예약할 수 있어요. 심기에 성공하면 1개 소모돼요.\n'
+            '예약을 취소하거나 심기에 실패하면 소모되지 않아요. 무게 확률은 그대로예요.', color=0x78AD70)
+
+    async def interaction_check(self, interaction):
+        if interaction.user.id != self.user:
+            await interaction.response.send_message('자신의 /농장을 열어 주세요.', ephemeral=True)
+            return False
+        return True
+
+    @discord.ui.select(placeholder='🌿 비료를 사용할 밭 선택', row=0)
+    async def row_menu(self, interaction, select):
+        row = int(select.values[0])
+        if row >= self.state['rows']:
+            await interaction.response.send_message('🔒 아직 잠긴 밭이에요.', ephemeral=True)
+            return
+        self.row = row
+        for option in select.options:
+            option.default = option.value == str(row)
+        await interaction.response.edit_message(embed=self.embed(), view=self)
+
+    async def return_farm(self, interaction, state, notice=''):
+        view = FarmView(self.user, state)
+        await interaction.response.edit_message(embed=farm_embed(state, notice), view=view)
+        view.watch(interaction.channel.get_partial_message(interaction.message.id))
+        self.stop()
+
+    async def apply(self, interaction, action):
+        try:
+            state, notice = game.act(self.user, self.version, interaction.id, action, row=self.row)
+        except GameError as error:
+            await interaction.response.send_message(str(error), ephemeral=True)
+            return
+        await self.return_farm(interaction, state, notice)
+
+    @discord.ui.button(label='다음 심기에 사용', emoji='🌿', style=discord.ButtonStyle.green, row=1)
+    async def reserve(self, interaction, button):
+        await self.apply(interaction, 'reserve_fertilizer')
+
+    @discord.ui.button(label='예약 취소', row=1)
+    async def cancel(self, interaction, button):
+        await self.apply(interaction, 'cancel_fertilizer')
+
+    @discord.ui.button(label='농장으로', emoji='🌿', row=2)
+    async def back(self, interaction, button):
+        await self.return_farm(interaction, game.read(self.user))
+
 
 class ShopView(discord.ui.View):
     def __init__(self, user, state, category='seeds', crop='carrot'):
@@ -197,6 +272,13 @@ class ShopView(discord.ui.View):
                     await self.buy(interaction, 'buy', crop=self.crop, quantity=quantity)
                 button.callback = callback
                 self.add_item(button)
+        elif category == 'fertilizer':
+            for quantity in (1, 5, 10):
+                button = discord.ui.Button(label=f"{quantity}개 구매 · {CONFIG['fertilizer_price']*quantity}G", emoji='🌿', row=2, style=discord.ButtonStyle.green)
+                async def buy_fertilizer(interaction, quantity=quantity):
+                    await self.buy(interaction, 'buy_fertilizer', quantity=quantity)
+                button.callback = buy_fertilizer
+                self.add_item(button)
         else:
             button = discord.ui.Button(label=f"{'설치 완료' if state['scarecrow'] else '허수아비 구매'} · {CONFIG['scarecrow_price']}G", emoji='🛡️', row=2, disabled=state['scarecrow'])
             async def scarecrow(interaction):
@@ -212,12 +294,15 @@ class ShopView(discord.ui.View):
             seconds = c['seconds']
             duration = f'{seconds}초' if seconds < 60 else f'{seconds//60}분'
             embed.add_field(name=f"{c['emoji']} {c['name']} 씨앗", value=f"가격 **{c['seed_price']}G / 개**\n성장 시간 **{duration}**\n보유 씨앗 **{self.state['seeds'][self.crop]}개**\n아래 버튼으로 수량을 선택해 구매하세요.", inline=False)
+        elif self.category == 'fertilizer':
+            embed.add_field(name='🌿 성장 비료', value=f"가격 **{CONFIG['fertilizer_price']}G / 개** · 보유 **{self.state.get('fertilizer', 0)}개**\n빈 밭 한 줄의 다음 심기 성장 시간 **20% 감소**\n농장의 🌿 비료 사용 버튼에서 예약해 주세요.\n심기에 성공할 때 1개 소모 · 중복 적용 불가", inline=False)
         else:
             embed.add_field(name='🛡️ 허수아비', value=f"가격 **{CONFIG['scarecrow_price']}G** · 영구 적용\n구매 후 새로 심는 작물부터 새 피해를 막아요.\n상태: {'✅ 설치됨' if self.state['scarecrow'] else '미설치'}", inline=False)
         return embed
 
     @discord.ui.select(placeholder='🗂️ 카테고리 선택', row=0, options=[
         discord.SelectOption(label='씨앗', value='seeds', emoji='🌱', description='당근 · 토마토 · 호박'),
+        discord.SelectOption(label='비료', value='fertilizer', emoji='🌿', description='일회용 성장 비료 · 다음 심기 20% 단축'),
         discord.SelectOption(label='농장 용품', value='supplies', emoji='🧰', description='농장을 지켜 주는 허수아비')])
     async def category_menu(self, interaction, select):
         await self.navigate(interaction, select.values[0], self.crop)
@@ -302,6 +387,7 @@ async def shop(interaction: discord.Interaction):
 async def bag(interaction: discord.Interaction):
     s, _ = visit(interaction)
     embed = discord.Embed(title='🎒 나의 가방', color=0x78AD70)
+    embed.add_field(name='🌿 성장 비료', value=f"보유 {s['fertilizer']}개 · 예약 {sum(s['fertilizer_rows'])}개\n농장의 비료 사용 버튼에서 예약·취소할 수 있어요.", inline=False)
     for key, c in CROPS.items():
         items = [x for x in s['bag'] if x['crop'] == key]
         best = s['records'].get(key, 0)
@@ -345,7 +431,8 @@ async def help_command(interaction: discord.Interaction):
     await interaction.response.send_message('🌱 /농장 → 작물과 빈 밭 선택 → 심기 → 성장 후 새로고침 → 모두 수확 → 판매\n'
         '1번 밭은 첫 가로줄 5칸이에요. 2~5번 밭은 줄 확장 구매 후 열려요.\n'
         '밭을 선택하면 해당 줄의 빈 칸에만 심어요. 열린 밭 전체도 선택할 수 있어요.\n'
-        '/상점: 씨앗·허수아비 구매 · /가방: 씨앗·수확물·최고 기록\n'
+        '/상점: 씨앗·비료·허수아비 구매 · /가방: 씨앗·비료·수확물·최고 기록\n'
+        '🌿 성장 비료: 5G, 빈 밭 한 줄의 다음 심기에 1개 소모하고 성장 시간 20% 감소. 농장의 비료 사용 버튼에서 예약해요.\n'
         '/판매: 작물별 또는 전체 판매 · /순위: 범위 선택, crop 생략 시 누적 판매 수익\n'
         '당근 30초 · 토마토 5분 · 호박 30분. 작물은 시들지 않아요.\n'
         '전체 심기는 빈 밭 수만큼 씨앗이 있어야 해요. 한 줄씩 최대 25칸까지 확장해요.\n'

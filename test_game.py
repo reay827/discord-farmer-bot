@@ -143,6 +143,80 @@ class GameTests(unittest.TestCase):
         self.assertIn('🥕 당근', message)
         self.assertIn('🍅 토마토', message)
 
+    def test_fertilizer_reservation_failure_restart_and_one_use(self):
+        self.act('buy_fertilizer', quantity=1)
+        self.assertEqual(self.s['gold'], 95)
+        self.act('reserve_fertilizer', row=0)
+        self.assertEqual(self.s['fertilizer'], 1)
+        with self.assertRaises(GameError):
+            self.act('reserve_fertilizer', row=0)
+        with self.assertRaises(GameError):
+            self.act('plant', crop='tomato', row=0)
+        self.assertTrue(self.game.read(1)['fertilizer_rows'][0])
+        self.game = Game(self.path, clock=lambda: self.now)
+        self.act('plant', crop='carrot', row=0)
+        self.assertEqual(self.s['fertilizer'], 0)
+        self.assertFalse(self.s['fertilizer_rows'][0])
+        self.assertTrue(all(p['ready'] == self.now+24 for p in self.s['plots'][:5]))
+        self.assertTrue(all(p['fertilized'] for p in self.s['plots'][:5]))
+        self.now += 24
+        self.act('harvest')
+        self.act('sell')
+        self.act('buy', crop='carrot', quantity=5)
+        self.act('plant', crop='carrot', row=0)
+        self.assertEqual(self.s['plots'][0]['ready'], self.now+30)
+
+    def test_fertilizer_cancel_locked_occupied_and_no_overbooking(self):
+        self.act('buy_fertilizer')
+        with self.assertRaises(GameError):
+            self.act('reserve_fertilizer', row=1)
+        self.act('reserve_fertilizer', row=0)
+        self.act('cancel_fertilizer', row=0)
+        self.assertEqual(self.s['fertilizer'], 1)
+        self.act('plant', crop='carrot', row=0)
+        with self.assertRaises(GameError):
+            self.act('reserve_fertilizer', row=0)
+        self.now += 30
+        self.act('harvest')
+        self.act('sell')
+        self.act('expand')
+        self.act('reserve_fertilizer', row=0)
+        with self.assertRaises(GameError):
+            self.act('reserve_fertilizer', row=1)
+        self.assertEqual(sum(self.game.read(1)['fertilizer_rows']), 1)
+
+    def test_whole_farm_fertilizes_only_reserved_row(self):
+        self.act('expand')
+        self.act('plant', crop='carrot', row=0)
+        self.now += 30
+        self.act('harvest')
+        self.act('sell')
+        # 테스트 준비용 골드, 실제 비료·씨앗 구매 경로는 그대로 사용.
+        with self.game.transaction() as db:
+            import json
+            self.s['gold'] = 1000
+            db.execute('UPDATE players SET state=? WHERE id=?', (json.dumps(self.s), '1'))
+        self.act('buy', crop='tomato', quantity=10)
+        self.act('buy_fertilizer')
+        self.act('reserve_fertilizer', row=1)
+        self.act('plant', crop='tomato')
+        self.assertEqual(self.s['plots'][0]['ready'], self.now+300)
+        self.assertEqual(self.s['plots'][5]['ready'], self.now+240)
+        self.assertEqual(self.s['fertilizer'], 0)
+
+    def test_existing_save_without_fertilizer_fields(self):
+        import json
+        with self.game.transaction() as db:
+            old = self.s.copy()
+            old.pop('fertilizer', None)
+            old.pop('fertilizer_rows', None)
+            db.execute('UPDATE players SET state=? WHERE id=?', (json.dumps(old), '1'))
+        state = self.game.read(1)
+        self.assertEqual(state['fertilizer'], 0)
+        self.assertEqual(state['gold'], 100)
+        self.act('buy_fertilizer')
+        self.assertEqual(self.s['fertilizer'], 1)
+
     def test_all_growth_times_and_crop_sale(self):
         self.act('buy', crop='tomato')
         self.act('buy', crop='pumpkin')

@@ -55,15 +55,16 @@ class AutoGrowthTests(unittest.IsolatedAsyncioTestCase):
         with patch.object(bot.game, 'read', return_value=state):
             await view.navigate(interaction, 'supplies', 'carrot')
         supplies = interaction.response.edit_message.call_args.kwargs['view']
-        self.assertEqual(len(supplies.children), 2)
+        self.assertEqual(len(supplies.children), 3)
         self.assertIn('허수아비', supplies.embed().fields[1].name)
         with patch.object(bot.game, 'read', return_value=state):
             await supplies.navigate(interaction, 'seeds', 'tomato')
         seeds = interaction.response.edit_message.call_args.kwargs['view']
-        self.assertEqual(len(seeds.children), 5)
+        self.assertEqual(len(seeds.children), 6)
         self.assertIn('토마토', seeds.embed().fields[1].name)
         with patch.object(bot.game, 'act', return_value=(state, '구매 완료')) as act:
-            await seeds.children[3].callback(interaction)
+            button = next(item for item in seeds.children if isinstance(item, bot.discord.ui.Button) and item.label.startswith('5개 구매'))
+            await button.callback(interaction)
             act.assert_called_once_with(1, 0, 123, 'buy', crop='tomato', quantity=5)
         updated = interaction.response.edit_message.call_args.kwargs['view']
         self.assertEqual(updated.crop, 'tomato')
@@ -86,3 +87,43 @@ class AutoGrowthTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotIn('잠김', unlocked.plot_menu.options[2].label)
         view.stop()
         unlocked.stop()
+
+    async def test_farm_shop_round_trip_uses_latest_state(self):
+        state = self.state(1800)
+        farm = bot.FarmView(1, state)
+        message = AsyncMock()
+        message.id = 123
+        message.flags = SimpleNamespace(ephemeral=False)
+        interaction = SimpleNamespace(response=SimpleNamespace(edit_message=AsyncMock()), message=message,
+                                      channel=SimpleNamespace(get_partial_message=lambda mid: message))
+        with patch.object(bot.game, 'read', return_value=state):
+            await farm.go_shop.callback(interaction)
+        shop = interaction.response.edit_message.call_args.kwargs['view']
+        self.assertIsInstance(shop, bot.ShopView)
+        self.assertTrue(farm.is_finished())
+        state['gold'] = 75
+        state['version'] = 1
+        with patch.object(bot.game, 'read', return_value=state):
+            await shop.go_farm.callback(interaction)
+        returned = interaction.response.edit_message.call_args.kwargs['view']
+        self.assertEqual(returned.version, 1)
+        self.assertIsNotNone(returned._growth_task)
+        self.assertTrue(shop.is_finished())
+        returned.stop()
+
+    async def test_private_shop_opens_public_farm(self):
+        state = self.state(1800)
+        shop = bot.ShopView(1, state)
+        old = AsyncMock()
+        old.flags = SimpleNamespace(ephemeral=True)
+        new = SimpleNamespace(id=456)
+        interaction = SimpleNamespace(message=old, response=SimpleNamespace(send_message=AsyncMock()),
+            original_response=AsyncMock(return_value=new),
+            channel=SimpleNamespace(get_partial_message=lambda mid: AsyncMock()))
+        with patch.object(bot.game, 'read', return_value=state):
+            await shop.go_farm.callback(interaction)
+        interaction.response.send_message.assert_awaited_once()
+        self.assertNotIn('ephemeral', interaction.response.send_message.call_args.kwargs)
+        old.edit.assert_awaited_once_with(view=None)
+        returned = interaction.response.send_message.call_args.kwargs['view']
+        returned.stop()

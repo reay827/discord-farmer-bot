@@ -157,6 +157,13 @@ class FarmView(discord.ui.View):
             option.default = option.value == 'all'
         await interaction.response.edit_message(view=self)
 
+    @discord.ui.button(label='상점', emoji='🏪', style=discord.ButtonStyle.primary, row=4)
+    async def go_shop(self, interaction, button):
+        view = ShopView(self.user, game.read(self.user))
+        async with self._edit_lock:
+            await interaction.response.edit_message(content=None, embed=view.embed(), view=view)
+            self.stop()
+
 
 class ShopView(discord.ui.View):
     def __init__(self, user, state, category='seeds', crop='carrot'):
@@ -204,6 +211,21 @@ class ShopView(discord.ui.View):
         discord.SelectOption(label='농장 용품', value='supplies', emoji='🧰', description='농장을 지켜 주는 허수아비')])
     async def category_menu(self, interaction, select):
         await self.navigate(interaction, select.values[0], self.crop)
+
+    @discord.ui.button(label='농장으로', emoji='🌿', style=discord.ButtonStyle.primary, row=4)
+    async def go_farm(self, interaction, button):
+        state = game.read(self.user)
+        view = FarmView(self.user, state)
+        if interaction.message.flags.ephemeral:
+            # /상점은 비공개이므로 장시간 자동 갱신이 가능한 공개 농장 화면을 엽니다.
+            await interaction.response.send_message(embed=farm_embed(state), view=view)
+            message = await interaction.original_response()
+            await interaction.message.edit(view=None)
+        else:
+            await interaction.response.edit_message(content=None, embed=farm_embed(state), view=view)
+            message = interaction.message
+        view.watch(interaction.channel.get_partial_message(message.id))
+        self.stop()
 
     async def navigate(self, interaction, category, crop):
         view = ShopView(self.user, game.read(self.user), category, crop)

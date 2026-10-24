@@ -129,7 +129,7 @@ class Game:
                 targets = list(range(row*5, row*5+5))
             targets = [i for i in targets if s['plots'][i] is None]
             if not targets:
-                raise GameError('빈 밭이 없어요.')
+                raise GameError('밭에 이미 작물이 심어져있어요.')
             if s['seeds'][crop] < len(targets):
                 raise GameError(f"씨앗 {len(targets)}개가 필요해요. 현재 {s['seeds'][crop]}개예요.")
             s['seeds'][crop] -= len(targets)

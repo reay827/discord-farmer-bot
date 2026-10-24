@@ -20,8 +20,10 @@ game = Game(db_path if db_path.is_absolute() else ROOT / db_path)
 
 def duration_text(seconds):
     seconds = int(seconds)
-    minutes, seconds = divmod(seconds, 60)
-    return (f'{minutes}분 ' if minutes else '') + (f'{seconds}초' if seconds or not minutes else '')
+    hours, remaining = divmod(seconds, 3600)
+    minutes, seconds = divmod(remaining, 60)
+    parts = ([f'{hours}시간'] if hours else []) + ([f'{minutes}분'] if minutes else []) + ([f'{seconds}초'] if seconds else [])
+    return ' '.join(parts) or '0초'
 
 
 def crop_times(fertilizer=False):
@@ -61,7 +63,7 @@ def farm_embed(s, notice='', public_name=None):
                 key = (p['crop'], int(p['ready']))
                 groups[key] = p.get('growth_seconds', growth_seconds(p['crop'], p.get('fertilized', False)))
         for (crop, ready), seconds in groups.items():
-            finish = datetime.fromtimestamp(ready, KST).strftime('%H:%M:%S')
+            finish = datetime.fromtimestamp(ready, KST).strftime('%m/%d %H:%M:%S')
             growing.append(f"{('1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣')[row]} {CROPS[crop]['name']} · 성장 {duration_text(seconds)} · {finish} 완료")
     if growing:
         embed.add_field(name='성장 완료 예정 · 한국 시간', value='\n'.join(growing), inline=False)
@@ -397,7 +399,7 @@ class ShopView(discord.ui.View):
         if self.category == 'seeds':
             c = CROPS[self.crop]
             seconds = c['seconds']
-            duration = f'{seconds}초' if seconds < 60 else f'{seconds//60}분'
+            duration = duration_text(seconds)
             embed.add_field(name=f"{c['emoji']} {c['name']} 씨앗", value=f"가격 **{c['seed_price']}G / 개**\n성장 시간 **{duration}**\n보유 씨앗 **{self.state['seeds'][self.crop]}개**\n아래 버튼으로 수량을 선택해 구매하세요.", inline=False)
         elif self.category == 'fertilizer':
             embed.add_field(name='🌿 성장 비료', value=f"가격 **{CONFIG['fertilizer_price']}G / 개** · 보유 **{self.state.get('fertilizer', 0)}개**\n빈 밭 한 줄의 다음 심기 성장 시간 **20% 감소**\n농장의 🌿 비료 사용 버튼에서 예약해 주세요.\n심기에 성공할 때 1개 소모 · 중복 적용 불가", inline=False)
@@ -406,7 +408,7 @@ class ShopView(discord.ui.View):
         return embed
 
     @discord.ui.select(placeholder='🗂️ 카테고리 선택', row=0, options=[
-        discord.SelectOption(label='씨앗', value='seeds', emoji='🌱', description='당근 · 딸기 · 토마토 · 호박 · 오이'),
+        discord.SelectOption(label='씨앗', value='seeds', emoji='🌱', description='감자부터 목화까지 · 성장 시간순 12종'),
         discord.SelectOption(label='비료', value='fertilizer', emoji='🌿', description='일회용 성장 비료 · 다음 심기 20% 단축'),
         discord.SelectOption(label='농장 용품', value='supplies', emoji='🧰', description='농장을 지켜 주는 허수아비')])
     async def category_menu(self, interaction, select):

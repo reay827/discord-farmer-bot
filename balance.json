@@ -4,17 +4,113 @@
   "attendance_daily_gold": 30,
   "attendance_bonus_days": 7,
   "attendance_bonus_gold": 100,
-  "expansion_prices": [100, 400, 1000, 2500],
+  "expansion_prices": [
+    100,
+    400,
+    1000,
+    2500
+  ],
   "scarecrow_price": 300,
   "fertilizer_price": 5,
   "fertilizer_growth_multiplier": 0.8,
   "bird_probability": 0.05,
   "bird_value_multiplier": 0.9,
   "crops": {
-    "carrot": {"name": "당근", "emoji": "🥕", "seconds": 30, "seed_price": 5, "base_sale": 9, "base_weight": 100},
-    "strawberry": {"name": "딸기", "emoji": "🍓", "seconds": 300, "seed_price": 10, "base_sale": 52, "base_weight": 20},
-    "tomato": {"name": "토마토", "emoji": "🍅", "seconds": 900, "seed_price": 30, "base_sale": 165, "base_weight": 200},
-    "pumpkin": {"name": "호박", "emoji": "🎃", "seconds": 1800, "seed_price": 60, "base_sale": 360, "base_weight": 2000},
-    "cucumber": {"name": "오이", "emoji": "🥒", "seconds": 3600, "seed_price": 100, "base_sale": 760, "base_weight": 300}
+    "potato": {
+      "name": "감자",
+      "emoji": "🥔",
+      "seconds": 30,
+      "seed_price": 2,
+      "base_sale": 6,
+      "base_weight": 150
+    },
+    "carrot": {
+      "name": "당근",
+      "emoji": "🥕",
+      "seconds": 60,
+      "seed_price": 5,
+      "base_sale": 14,
+      "base_weight": 100
+    },
+    "pumpkin": {
+      "name": "호박",
+      "emoji": "🎃",
+      "seconds": 300,
+      "seed_price": 10,
+      "base_sale": 60,
+      "base_weight": 2000
+    },
+    "cucumber": {
+      "name": "오이",
+      "emoji": "🥒",
+      "seconds": 600,
+      "seed_price": 20,
+      "base_sale": 130,
+      "base_weight": 300
+    },
+    "eggplant": {
+      "name": "가지",
+      "emoji": "🍆",
+      "seconds": 900,
+      "seed_price": 30,
+      "base_sale": 210,
+      "base_weight": 250
+    },
+    "strawberry": {
+      "name": "딸기",
+      "emoji": "🍓",
+      "seconds": 1800,
+      "seed_price": 60,
+      "base_sale": 450,
+      "base_weight": 20
+    },
+    "tomato": {
+      "name": "토마토",
+      "emoji": "🍅",
+      "seconds": 3600,
+      "seed_price": 100,
+      "base_sale": 940,
+      "base_weight": 200
+    },
+    "grape": {
+      "name": "포도",
+      "emoji": "🍇",
+      "seconds": 7200,
+      "seed_price": 200,
+      "base_sale": 2000,
+      "base_weight": 500
+    },
+    "pear": {
+      "name": "배",
+      "emoji": "🍐",
+      "seconds": 14400,
+      "seed_price": 400,
+      "base_sale": 4240,
+      "base_weight": 600
+    },
+    "tangerine": {
+      "name": "귤",
+      "emoji": "🍊",
+      "seconds": 28800,
+      "seed_price": 800,
+      "base_sale": 8960,
+      "base_weight": 100
+    },
+    "rice": {
+      "name": "쌀",
+      "emoji": "🌾",
+      "seconds": 43200,
+      "seed_price": 1200,
+      "base_sale": 14160,
+      "base_weight": 1000
+    },
+    "cotton": {
+      "name": "목화",
+      "emoji": "☁️",
+      "seconds": 86400,
+      "seed_price": 2400,
+      "base_sale": 29760,
+      "base_weight": 200
+    }
   }
 }

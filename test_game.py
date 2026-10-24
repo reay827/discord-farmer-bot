@@ -24,14 +24,21 @@ class GameTests(unittest.TestCase):
         self.s, message = self.game.act(1, self.s['version'], self.counter, action, **args)
         return message
 
+    def fund(self):
+        import json
+        self.s['gold'] = 1000000
+        with self.game.transaction() as db:
+            db.execute('UPDATE players SET state=? WHERE id=?', (json.dumps(self.s), '1'))
+
     def test_existing_seed_packs_round_up_only_once(self):
+        self.fund()
         self.act('buy', crop='strawberry', quantity=3)
         self.act('buy', crop='carrot', quantity=2)
         self.act('buy', crop='tomato', quantity=1)
         before = self.game.read(1)
         self.assertEqual(self.game.round_seed_packs_once(), (1, 9))
         state = self.game.read(1)
-        self.assertEqual(state['seeds'], dict(strawberry=5, carrot=10, tomato=5, pumpkin=0, cucumber=0))
+        self.assertEqual(state['seeds'], {k: (5 if k in ('strawberry','tomato') else 10 if k == 'carrot' else 0) for k in CROPS})
         self.assertEqual(state['gold'], before['gold'])
         self.assertEqual(state['plots'], before['plots'])
         self.assertEqual(state['bag'], before['bag'])
@@ -111,7 +118,7 @@ class GameTests(unittest.TestCase):
         self.act('plant', crop='carrot')
         with self.assertRaises(GameError):
             self.act('harvest')
-        self.now += 30
+        self.now += 60
         self.game = Game(self.path, clock=lambda: self.now)
         self.act('harvest')
         self.assertEqual(len(self.s['bag']), 5)
@@ -164,7 +171,7 @@ class GameTests(unittest.TestCase):
         self.assertTrue(all(self.s['plots'][i] for i in range(5)))
         self.assertTrue(all(p is None for p in self.s['plots'][5:]))
         self.assertEqual(self.s['seeds']['carrot'], 0)
-        self.now += 30
+        self.now += 60
         self.act('harvest')
         self.act('sell')
         self.act('expand')
@@ -189,21 +196,21 @@ class GameTests(unittest.TestCase):
         rng = FixedWeights()
         self.game.rng = rng
         self.act('plant', crop='carrot', row=0)
-        self.now += 30
+        self.now += 60
         message = self.act('harvest')
         self.assertEqual(message.count('첫 기록!'), 1)
         self.assertIn('100g', message)
         self.assertIn('당근 5개', message)
         self.act('buy', crop='carrot', quantity=5)
         self.act('plant', crop='carrot', row=0)
-        self.now += 30
+        self.now += 60
         message = self.act('harvest')
         self.assertNotIn('신기록', message)
         self.assertNotIn('첫 기록', message)
         self.act('buy', crop='carrot', quantity=5)
         self.act('plant', crop='carrot', row=0)
         rng.ratio = 1.2
-        self.now += 30
+        self.now += 60
         message = self.act('harvest')
         self.assertEqual(message.count('개인 신기록!'), 1)
         self.assertIn('120g', message)
@@ -213,7 +220,7 @@ class GameTests(unittest.TestCase):
         self.act('buy', crop='tomato')
         self.act('plant', crop='carrot', plot=0)
         self.act('plant', crop='tomato', plot=1)
-        self.now += 900
+        self.now += 3600
         message = self.act('harvest')
         self.assertEqual(message.count('첫 기록!'), 2)
         self.assertIn('🥕 당근', message)
@@ -233,14 +240,14 @@ class GameTests(unittest.TestCase):
         self.act('plant', crop='carrot', row=0)
         self.assertEqual(self.s['fertilizer'], 0)
         self.assertFalse(self.s['fertilizer_rows'][0])
-        self.assertTrue(all(p['ready'] == self.now+24 for p in self.s['plots'][:5]))
+        self.assertTrue(all(p['ready'] == self.now+48 for p in self.s['plots'][:5]))
         self.assertTrue(all(p['fertilized'] for p in self.s['plots'][:5]))
-        self.now += 24
+        self.now += 48
         self.act('harvest')
         self.act('sell')
         self.act('buy', crop='carrot', quantity=5)
         self.act('plant', crop='carrot', row=0)
-        self.assertEqual(self.s['plots'][0]['ready'], self.now+30)
+        self.assertEqual(self.s['plots'][0]['ready'], self.now+60)
 
     def test_fertilizer_cancel_locked_occupied_and_no_overbooking(self):
         self.act('buy_fertilizer')
@@ -252,7 +259,7 @@ class GameTests(unittest.TestCase):
         self.act('plant', crop='carrot', row=0)
         with self.assertRaises(GameError):
             self.act('reserve_fertilizer', row=0)
-        self.now += 30
+        self.now += 60
         self.act('harvest')
         self.act('sell')
         self.act('expand')
@@ -264,20 +271,20 @@ class GameTests(unittest.TestCase):
     def test_whole_farm_fertilizes_only_reserved_row(self):
         self.act('expand')
         self.act('plant', crop='carrot', row=0)
-        self.now += 30
+        self.now += 60
         self.act('harvest')
         self.act('sell')
         # 테스트 준비용 골드, 실제 비료·씨앗 구매 경로는 그대로 사용.
         with self.game.transaction() as db:
             import json
-            self.s['gold'] = 1000
+            self.s['gold'] = 100000
             db.execute('UPDATE players SET state=? WHERE id=?', (json.dumps(self.s), '1'))
         self.act('buy', crop='tomato', quantity=10)
         self.act('buy_fertilizer')
         self.act('reserve_fertilizer', row=1)
         self.act('plant', crop='tomato')
-        self.assertEqual(self.s['plots'][0]['ready'], self.now+900)
-        self.assertEqual(self.s['plots'][5]['ready'], self.now+720)
+        self.assertEqual(self.s['plots'][0]['ready'], self.now+3600)
+        self.assertEqual(self.s['plots'][5]['ready'], self.now+2880)
         self.assertEqual(self.s['fertilizer'], 0)
 
     def test_existing_save_without_fertilizer_fields(self):
@@ -294,34 +301,32 @@ class GameTests(unittest.TestCase):
         self.assertEqual(self.s['fertilizer'], 1)
 
     def test_all_growth_times_and_crop_sale(self):
-        for _ in range(4):
-            self.act('checkin')
-            self.now += 86400
+        self.fund()
+        self.act('expand')
+        self.act('expand')
         for key in CROPS:
             if key != 'carrot':
                 self.act('buy', crop=key)
         for i, key in enumerate(CROPS):
             self.act('plant', crop=key, plot=i)
             self.assertEqual(self.s['plots'][i]['ready'], self.now+CROPS[key]['seconds'])
-        self.now += 3600
+        self.now += max(c['seconds'] for c in CROPS.values())
         self.act('harvest')
         receipt = self.act('sell', crop='tomato')
         self.assertIn('🍅 토마토 1개', receipt)
         self.assertNotIn('🥕 당근', receipt)
-        self.assertEqual({x['crop'] for x in self.s['bag']}, {'strawberry','carrot','pumpkin','cucumber'})
+        self.assertEqual({x['crop'] for x in self.s['bag']}, set(CROPS)-{'tomato'})
         total = sum(x['value'] for x in self.s['bag'])
         receipt = self.act('sell')
         self.assertIn('🥕 당근 1개', receipt)
         self.assertIn('🎃 호박 1개', receipt)
         self.assertIn('🥒 오이 1개', receipt)
-        self.assertIn(f'총 4개 · +{total:,}골드', receipt)
+        self.assertIn(f'총 {len(CROPS)-1}개 · +{total:,}골드', receipt)
 
     def test_crop_profit_progression_and_new_crop_migration(self):
         profit = {k: c['base_sale']-c['seed_price'] for k,c in CROPS.items()}
-        self.assertGreater(profit['strawberry'], profit['carrot']*10)
-        self.assertGreater(profit['tomato'], profit['strawberry']*3)
-        self.assertGreater(profit['pumpkin'], profit['tomato']*2)
-        self.assertGreater(profit['cucumber'], profit['pumpkin']*2)
+        hourly = [profit[k]*3600/c['seconds'] for k,c in CROPS.items()]
+        self.assertTrue(all(a < b for a,b in zip(hourly,hourly[1:])))
         import json
         with self.game.transaction() as db:
             old = self.s.copy()
@@ -341,7 +346,7 @@ class GameTests(unittest.TestCase):
             if self.s['gold'] >= 3900:
                 break
             self.act('plant', crop='carrot', plot=0)
-            self.now += 30
+            self.now += 60
             self.act('harvest')
             self.act('sell')
             # 1개 농사 반복에는 남은 씨앗을 사용하고 소진 시 재구매.
@@ -350,7 +355,7 @@ class GameTests(unittest.TestCase):
         # 대량 수익이 필요한 상한 검사는 별도 정상 상태 fixture로 설정.
         with self.game.transaction() as db:
             import json
-            self.s['gold'] = 10000
+            self.s['gold'] = 1000000
             db.execute('UPDATE players SET state=? WHERE id=?', (json.dumps(self.s), '1'))
         revenue = self.s['revenue']
         for _ in range(3):
@@ -362,7 +367,7 @@ class GameTests(unittest.TestCase):
 
     def test_server_and_global_ranking(self):
         self.act('plant', crop='carrot')
-        self.now += 30
+        self.now += 60
         self.act('harvest')
         self.act('sell')
         self.assertEqual(self.game.ranking(10)[0][0], '1')
@@ -379,14 +384,14 @@ class GameTests(unittest.TestCase):
         self.game.rng = Birds()
         with self.game.transaction() as db:
             import json
-            self.s['gold'] = 1000
+            self.s['gold'] = 100000
             db.execute('UPDATE players SET state=? WHERE id=?', (json.dumps(self.s), '1'))
         self.act('plant', crop='carrot', plot=0)
         self.act('scarecrow')
         self.act('plant', crop='carrot', plot=1)
         self.assertTrue(self.s['plots'][0]['bird'])
         self.assertFalse(self.s['plots'][1]['bird'])
-        self.now += 30
+        self.now += 60
         self.act('harvest')
         self.assertEqual(self.s['bag'][0]['weight'], self.s['bag'][1]['weight'])
         self.assertLess(self.s['bag'][0]['value'], self.s['bag'][1]['value'])

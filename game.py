@@ -332,7 +332,7 @@ class Game:
             raise GameError(f"{price}골드가 필요해요. 현재 {s['gold']}골드예요.")
         s['gold'] -= price
 
-    def ranking(self, guild=None, crop=None, mineral=None):
+    def ranking(self, guild=None, crop=None, mineral=None, cumulative=False):
         with self.connect() as db:
             rows = db.execute('SELECT p.id,p.name,p.state FROM players p' +
                 (' JOIN members m ON p.id=m.user WHERE m.guild=?' if guild is not None else ''),
@@ -340,7 +340,7 @@ class Game:
         result = []
         for uid, name, raw in rows:
             s = json.loads(raw)
-            score = (s.get('mine') or {}).get('records',{}).get(mineral,0) if mineral else s['records'].get(crop, 0) if crop else s['gold']
+            score = (s.get('mine') or {}).get('records',{}).get(mineral,0) if mineral else s['records'].get(crop, 0) if crop else s.get('revenue',0)+(s.get('mine') or {}).get('revenue',0) if cumulative else s['gold']
             if score > 0 or (not crop and not mineral):
                 result.append((uid, name, score))
         return sorted(result, key=lambda x: (-x[2], int(x[0])))[:10]

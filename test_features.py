@@ -105,3 +105,13 @@ class FeatureUITests(unittest.IsolatedAsyncioTestCase):
         embed=bot.mine_embed(state)
         self.assertFalse(any(f.name.startswith('⏳') for f in embed.fields))
         self.assertTrue(any(f.name=='🎒 가방 가득 참' for f in embed.fields))
+
+    async def test_cumulative_ranking_has_gold_units_and_no_mineral_picker(self):
+        view=bot.RankView(10,kind='cumulative')
+        self.assertEqual(len(view.children),3)
+        with patch.object(bot.game,'ranking',return_value=[('1','농부',12345)]) as query:
+            embed=view.embed()
+            query.assert_called_once_with(10,crop=None,mineral=None,cumulative=True)
+        self.assertIn('누적 판매 수익',embed.title)
+        self.assertIn('12,345G',embed.description)
+        view.stop()

@@ -198,3 +198,14 @@ class MiningTests(unittest.TestCase):
         self.now+=121; self.act('mine_open')
         self.assertEqual(len(self.s['mine']['bag']),1)
         self.assertAlmostEqual(self.s['mine']['progress'],1/120)
+
+    def test_cumulative_combines_farm_and_mine_without_wallet_or_rewards(self):
+        self.s['revenue']=300
+        self.save()
+        self.act('mine_open'); self.now+=120; self.act('mine_open')
+        self.act('mine_collect'); self.act('mine_sell')
+        self.assertEqual(self.game.ranking(10,cumulative=True)[0][2],302)
+        self.act('checkin')
+        self.act('buy',crop='carrot',quantity=5)
+        self.assertEqual(self.game.ranking(10,cumulative=True)[0][2],302)
+        self.assertEqual(self.game.ranking(10)[0][2],self.s['gold'])

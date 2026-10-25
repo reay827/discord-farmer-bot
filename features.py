@@ -147,7 +147,7 @@ def install_features(client, game, visit, open_private_farm, update_public_farms
                 option.default=option.value==kind
             for option in self.scope_menu.options:
                 option.default=option.value==scope
-            if kind!='gold':
+            if kind in ('crop','mineral'):
                 choices=CROPS if kind=='crop' else MINERALS
                 menu=discord.ui.Select(placeholder='작물 선택' if kind=='crop' else '광물 선택',row=2,options=[discord.SelectOption(label=c['name'],value=k,emoji=c['emoji'],default=k==self.item) for k,c in choices.items()])
                 async def choose(i):
@@ -156,15 +156,17 @@ def install_features(client, game, visit, open_private_farm, update_public_farms
                 self.add_item(menu)
 
         def embed(self):
-            rows=game.ranking(self.guild if self.scope=='server' else None,
-                crop=self.item if self.kind=='crop' else None,mineral=self.item if self.kind=='mineral' else None)
-            label='보유 골드' if self.kind=='gold' else (CROPS if self.kind=='crop' else MINERALS)[self.item]['name']+' 최고 무게'
+            query={'crop':self.item if self.kind=='crop' else None,'mineral':self.item if self.kind=='mineral' else None}
+            if self.kind=='cumulative':
+                query['cumulative']=True
+            rows=game.ranking(self.guild if self.scope=='server' else None,**query)
+            label='보유 골드' if self.kind=='gold' else '누적 판매 수익' if self.kind=='cumulative' else (CROPS if self.kind=='crop' else MINERALS)[self.item]['name']+' 최고 무게'
             lines=[]
             for rank,(_,name,score) in enumerate(rows,1):
-                value=f'{score:,}G' if self.kind=='gold' else f'{score:,}g' if self.kind=='crop' else kg(score)
+                value=f'{score:,}G' if self.kind in ('gold','cumulative') else f'{score:,}g' if self.kind=='crop' else kg(score)
                 lines.append(f'{rank}. {discord.utils.escape_markdown(name)} · **{value}**')
             embed=discord.Embed(title=f"🏆 {'현재 서버' if self.scope=='server' else '봇 전체'} · {label}",description='\n'.join(lines) or '아직 기록이 없어요.',color=0xEBCB78)
-            embed.set_footer(text='자산은 현재 보유 골드만 · 미판매 재고 제외 · 구매하면 감소 · 무게 기록은 판매 후 유지')
+            embed.set_footer(text='누적 수익은 농장+탄광 판매 합계 · 구매해도 유지 · 출석/지급 제외' if self.kind=='cumulative' else '자산은 현재 보유 골드만 · 미판매 재고 제외 · 구매하면 감소 · 무게 기록은 판매 후 유지')
             return embed
 
         async def show(self,i,kind=None,scope=None,item=None):
@@ -176,7 +178,7 @@ def install_features(client, game, visit, open_private_farm, update_public_farms
             await i.response.edit_message(embed=view.embed(),view=view)
             self.stop()
 
-        @discord.ui.select(placeholder='순위 종류',row=0,options=[discord.SelectOption(label='보유 골드',value='gold',emoji='💰'),discord.SelectOption(label='작물 무게',value='crop',emoji='🌱'),discord.SelectOption(label='광물 무게',value='mineral',emoji='⛏️')])
+        @discord.ui.select(placeholder='순위 종류',row=0,options=[discord.SelectOption(label='보유 골드',value='gold',emoji='💰'),discord.SelectOption(label='누적 판매 수익',value='cumulative',emoji='📈'),discord.SelectOption(label='작물 무게',value='crop',emoji='🌱'),discord.SelectOption(label='광물 무게',value='mineral',emoji='⛏️')])
         async def kind_menu(self,i,select):
             await self.show(i,kind=select.values[0])
 

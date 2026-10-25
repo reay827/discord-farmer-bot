@@ -6,7 +6,7 @@ import time
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from mining import apply_mining, MiningError
+from mining import apply_mining, MiningError, MINING, MINERALS
 
 CONFIG = json.loads(Path(__file__).with_name('balance.json').read_text(encoding='utf-8'))
 CROPS = CONFIG['crops']
@@ -132,6 +132,44 @@ class Game:
                     added += extra
             db.execute('INSERT INTO migrations VALUES(?)', (key,))
             return changed, added
+
+    def rebalance_mining_once(self):
+        """Refund original upgrade prices and reprice unsold ore once, atomically."""
+        key='mining-economy-v2-20261025'
+        old_workers=[0,3000,12000,35000,90000]
+        old_picks=[0,3000,15000,80000]
+        old_values=dict(stone=2,coal=8,iron=20,emerald=150,ruby=300,aquamarine=3000,diamond=50000)
+        refunded_players,total_refund,revalued=0,0,0
+        with self.transaction() as db:
+            db.execute('CREATE TABLE IF NOT EXISTS migrations (id TEXT PRIMARY KEY)')
+            if db.execute('SELECT 1 FROM migrations WHERE id=?',(key,)).fetchone():
+                return dict(players=0,refund=0,revalued=0,already_applied=True)
+            for uid,raw in db.execute('SELECT id,state FROM players').fetchall():
+                s=prepare_state(json.loads(raw)); m=s.get('mine')
+                if not m:
+                    continue
+                refund=sum(old_workers[i]-MINING['worker_hire_costs'][i] for i in range(1,m['workers']))
+                refund+=sum(old_picks[i]-MINING['pickaxe_upgrade_costs'][MINING['pickaxes'][i]] for i in range(1,m['pickaxe']+1))
+                s['gold']+=refund
+                m['economy_v2_refund']=refund
+                if refund:
+                    refunded_players+=1; total_refund+=refund
+                for item in m['bag']:
+                    c=MINERALS[item['mineral']]
+                    new=c['base_sale'] if c['sale_mode']=='fixed_per_item' else max(1,round(c['base_sale']*item['weight_mg']/(c['base_weight_kg']*1000000)))
+                    if new!=item['value']:
+                        revalued+=1
+                    item['value']=new
+                for mineral,stock in m['inventory'].items():
+                    c=MINERALS[mineral]
+                    new=stock['count']*c['base_sale'] if c['sale_mode']=='fixed_per_item' else round(stock['value']*c['base_sale']/old_values[mineral])
+                    if new!=stock['value']:
+                        revalued+=stock['count']
+                    stock['value']=new
+                s['version']+=1
+                db.execute('UPDATE players SET state=? WHERE id=?',(json.dumps(s),uid))
+            db.execute('INSERT INTO migrations VALUES(?)',(key,))
+        return dict(players=refunded_players,refund=total_refund,revalued=revalued,already_applied=False)
 
     def act(self, user, version, operation, action, **args):
         with self.transaction() as db:

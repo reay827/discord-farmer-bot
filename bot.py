@@ -474,7 +474,7 @@ class ShopView(discord.ui.View):
             embed.add_field(name='🌿 성장 비료', value=f"가격 **{CONFIG['fertilizer_price']}G / 개** · 보유 **{self.state.get('fertilizer', 0)}개**\n빈 밭 한 줄의 다음 심기 성장 시간 **20% 감소**\n농장의 🌿 비료 사용 버튼에서 자동 사용을 설정해 주세요.\n심기에 성공할 때 1개 소모 · 중복 적용 불가", inline=False)
         elif self.category == 'pickaxes':
             tier=(self.state.get('mine') or {}).get('pickaxe',0)
-            embed.add_field(name='⛏️ 공용 곡괭이',value=f"현재: {MINING['pickaxe_names'][tier]}\n나무 무료 → 돌 3,000G → 철 15,000G → 다이아 80,000G\n순서대로 영구 업그레이드 · 이후 생산부터 새 광물 확률 적용\n{'🔒 2번 밭 개방 필요' if self.state['rows']<2 else '탄광에 가서 현재 광물을 받고 장비를 확인하세요.'}",inline=False)
+            embed.add_field(name='⛏️ 공용 곡괭이',value=f"현재: {MINING['pickaxe_names'][tier]}\n나무 무료 → 돌 1,000G → 철 8,000G → 다이아 50,000G\n순서대로 영구 업그레이드 · 이후 생산부터 새 광물 확률 적용\n{'🔒 2번 밭 개방 필요' if self.state['rows']<2 else '탄광에 가서 현재 광물을 받고 장비를 확인하세요.'}",inline=False)
         else:
             embed.add_field(name='🛡️ 허수아비', value=f"가격 **{CONFIG['scarecrow_price']}G** · 영구 적용\n구매 후 새로 심는 작물부터 새 피해를 막아요.\n상태: {'✅ 설치됨' if self.state['scarecrow'] else '미설치'}", inline=False)
         return embed

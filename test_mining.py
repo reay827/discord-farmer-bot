@@ -55,7 +55,7 @@ class MiningTests(unittest.TestCase):
         before=self.s['gold']
         self.act('mine_hire'); self.act('mine_open')
         self.assertEqual(self.s['mine']['workers'],2)
-        self.assertEqual(self.s['gold'],before-3000)
+        self.assertEqual(self.s['gold'],before-1000)
 
     def test_offline_capacity_stop_and_resume_without_catchup(self):
         self.act('mine_open')
@@ -142,7 +142,7 @@ class MiningTests(unittest.TestCase):
         self.act('mine_collect')
         self.assertEqual(self.s['gold'],before)
         self.act('mine_sell',mineral='stone')
-        self.assertEqual(self.s['gold'],before+2)
+        self.assertEqual(self.s['gold'],before+10)
         self.act('mine_sell')
         self.assertEqual(self.s['gold'],before+expected)
         self.assertEqual(self.s['mine']['records'],records)
@@ -204,8 +204,39 @@ class MiningTests(unittest.TestCase):
         self.save()
         self.act('mine_open'); self.now+=120; self.act('mine_open')
         self.act('mine_collect'); self.act('mine_sell')
-        self.assertEqual(self.game.ranking(10,cumulative=True)[0][2],302)
+        self.assertEqual(self.game.ranking(10,cumulative=True)[0][2],310)
         self.act('checkin')
         self.act('buy',crop='carrot',quantity=5)
-        self.assertEqual(self.game.ranking(10,cumulative=True)[0][2],302)
+        self.assertEqual(self.game.ranking(10,cumulative=True)[0][2],310)
         self.assertEqual(self.game.ranking(10)[0][2],self.s['gold'])
+
+    def test_rebalance_refunds_once_reprices_unsold_and_preserves_records(self):
+        self.top()
+        m=self.s['mine']
+        m['bag']=[dict(mineral='stone',weight_mg=1000000,value=2),dict(mineral='ruby',weight_mg=12000,value=360)]
+        m['inventory']={'coal':dict(count=3,value=24,best_mg=500000),'emerald':dict(count=2,value=300,best_mg=5000)}
+        m['records']={'ruby':12000}
+        m['revenue']=77; self.s['revenue']=123
+        self.save(); before=self.s['gold']
+        result=self.game.rebalance_mining_once()
+        state=self.game.read(1)
+        self.assertEqual(result['refund'],92000)
+        self.assertEqual(state['gold'],before+92000)
+        self.assertEqual(state['mine']['inventory']['coal']['value'],90)
+        self.assertEqual(state['mine']['inventory']['emerald']['value'],1000)
+        self.assertEqual(state['mine']['bag'][1]['value'],1200)
+        self.assertEqual(state['mine']['records'],{'ruby':12000})
+        self.assertEqual(self.game.ranking(10,cumulative=True)[0][2],200)
+        self.assertTrue(self.game.rebalance_mining_once()['already_applied'])
+        self.assertEqual(self.game.read(1),state)
+
+    def test_rebalance_first_upgrade_exact_refund_and_no_mine_no_reward(self):
+        self.act('mine_open')
+        self.s['mine'].update(workers=2,pickaxe=1)
+        self.save()
+        self.game.visit(2,'다른 농부',10)
+        before=self.s['gold']
+        result=self.game.rebalance_mining_once()
+        self.assertEqual(result['players'],1)
+        self.assertEqual(self.game.read(1)['gold'],before+4000)
+        self.assertEqual(self.game.read(2)['gold'],100)

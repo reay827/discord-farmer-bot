@@ -2,7 +2,7 @@
   "minerals": {
     "stone": {
       "name": "돌",
-      "base_sale": 2,
+      "base_sale": 10,
       "base_weight_kg": 1.0,
       "sale_mode": "fixed_per_item",
       "record_weight_for_ranking": true,
@@ -10,7 +10,7 @@
     },
     "coal": {
       "name": "석탄",
-      "base_sale": 8,
+      "base_sale": 30,
       "base_weight_kg": 0.5,
       "sale_mode": "fixed_per_item",
       "record_weight_for_ranking": true,
@@ -18,7 +18,7 @@
     },
     "iron": {
       "name": "철광석",
-      "base_sale": 20,
+      "base_sale": 80,
       "base_weight_kg": 0.8,
       "sale_mode": "fixed_per_item",
       "record_weight_for_ranking": true,
@@ -26,7 +26,7 @@
     },
     "emerald": {
       "name": "에메랄드",
-      "base_sale": 150,
+      "base_sale": 500,
       "base_weight_kg": 0.005,
       "sale_mode": "proportional_to_weight",
       "record_weight_for_ranking": true,
@@ -34,7 +34,7 @@
     },
     "ruby": {
       "name": "루비",
-      "base_sale": 300,
+      "base_sale": 1000,
       "base_weight_kg": 0.01,
       "sale_mode": "proportional_to_weight",
       "record_weight_for_ranking": true,
@@ -42,7 +42,7 @@
     },
     "aquamarine": {
       "name": "아쿠아마린",
-      "base_sale": 3000,
+      "base_sale": 10000,
       "base_weight_kg": 0.01,
       "sale_mode": "proportional_to_weight",
       "record_weight_for_ranking": true,
@@ -113,10 +113,10 @@
   ],
   "worker_hire_costs": [
     0,
-    3000,
-    12000,
-    35000,
-    90000
+    1000,
+    6000,
+    20000,
+    60000
   ],
   "bag_capacities": [
     60,
@@ -134,9 +134,9 @@
   ],
   "pickaxe_upgrade_costs": {
     "wood": 0,
-    "stone": 3000,
-    "iron": 15000,
-    "diamond": 80000
+    "stone": 1000,
+    "iron": 8000,
+    "diamond": 50000
   },
   "unlock_farm_rows": 2,
   "pity_seconds": 28800,

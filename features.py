@@ -1,8 +1,10 @@
 """Mining and public rankings Discord views; no background mining tasks."""
 import logging
+import math
+from datetime import datetime
 import discord
-from game import CROPS, GameError
-from mining import MINING, MINERALS, capacity, interval, kg
+from game import CROPS, GameError, KST
+from mining import MINING, MINERALS, capacity, interval, kg, seconds_until_full
 
 
 def install_features(client, game, visit, open_private_farm, update_public_farms):
@@ -13,6 +15,14 @@ def install_features(client, game, visit, open_private_farm, update_public_farms
         embed.add_field(name='⛏️ 곡괭이', value=MINING['pickaxe_names'][m['pickaxe']])
         embed.add_field(name='👷 노동자', value=f"{m['workers']}/5명 · 전체 {interval(m)}초/개")
         embed.add_field(name='🎒 탄광 가방', value=f"{len(m['bag'])}/{capacity(m)}개 · {'가득 참! 채굴 일시 정지' if len(m['bag']) >= capacity(m) else '채굴 중'}", inline=False)
+        if len(m['bag'])>=capacity(m):
+            embed.add_field(name='🎒 가방 가득 참',value='광물을 받아주세요. 받으면 채굴이 다시 시작돼요.',inline=False)
+        else:
+            remaining=seconds_until_full(m)
+            hours,rest=divmod(math.ceil(remaining),3600)
+            minutes,seconds=divmod(rest,60)
+            finish=datetime.fromtimestamp(m['last']+remaining,KST).strftime('%m/%d %H:%M:%S')
+            embed.add_field(name='⏳ 가방이 가득 차는 시간',value=f'{hours:02d}시간 {minutes:02d}분 {seconds:02d}초 후\n🕒 {finish} 예상 · 한국 시간',inline=False)
         lines = []
         for key,c in MINERALS.items():
             if inventory:

@@ -87,3 +87,21 @@ class FeatureUITests(unittest.IsolatedAsyncioTestCase):
         self.assertLess(len(embed),6000)
         self.assertTrue(all(len(f.value)<=1024 for f in embed.fields))
         self.assertIn('잭팟',embed.description)
+
+    async def test_mine_full_time_uses_capacity_and_partial_progress(self):
+        from mining import seconds_until_full
+        state=self.state(); m=state['mine']
+        self.assertEqual(seconds_until_full(m),7200)
+        embed=bot.mine_embed(state)
+        text=next(f.value for f in embed.fields if f.name.startswith('⏳'))
+        self.assertIn('02시간 00분 00초 후',text)
+        self.assertIn('한국 시간',text)
+        m['bag']=[{}]*18; m['progress']=.5
+        self.assertEqual(seconds_until_full(m),4980)
+        m['workers']=5
+        self.assertEqual(seconds_until_full(m),2075)
+        m['bag']=[dict(mineral='stone',value=2)]*60
+        self.assertEqual(seconds_until_full(m),0)
+        embed=bot.mine_embed(state)
+        self.assertFalse(any(f.name.startswith('⏳') for f in embed.fields))
+        self.assertTrue(any(f.name=='🎒 가방 가득 참' for f in embed.fields))

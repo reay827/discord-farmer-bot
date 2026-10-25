@@ -22,6 +22,11 @@ def interval(m):
     return MINING['worker_interval_seconds'][m['workers']-1]
 
 
+def seconds_until_full(m):
+    free=max(0,capacity(m)-len(m['bag']))
+    return max(0,(free-m['progress'])*interval(m)) if free else 0
+
+
 def open_mine(s, now):
     if s['rows'] < MINING['unlock_farm_rows']:
         raise MiningError('🔒 2번 밭을 개방하면 탄광을 이용할 수 있어요.')
